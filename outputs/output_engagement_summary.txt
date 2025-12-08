@@ -1,0 +1,98 @@
+============================================================
+CLASSROOM ENGAGEMENT SUMMARY
+============================================================
+
+Total Students: 14
+
+Student 1:
+  Frames tracked: 1942
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 2:
+  Frames tracked: 1942
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 78.4%
+
+Student 3:
+  Frames tracked: 1942
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 80.2%
+
+Student 4:
+  Frames tracked: 1942
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 58.2%
+
+Student 5:
+  Frames tracked: 0
+  Top emotion: N/A
+  Top action: N/A
+  Engagement: 0.0%
+
+Student 6:
+  Frames tracked: 1942
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 99.0%
+
+Student 7:
+  Frames tracked: 1097
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 99.6%
+
+Student 8:
+  Frames tracked: 1942
+  Top emotion: neutral
+  Top action: writing_notes
+  Engagement: 100.0%
+
+Student 9:
+  Frames tracked: 1942
+  Top emotion: disgust
+  Top action: neutral
+  Engagement: 99.6%
+
+Student 10:
+  Frames tracked: 1942
+  Top emotion: sad
+  Top action: neutral
+  Engagement: 69.4%
+
+Student 11:
+  Frames tracked: 474
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 99.4%
+
+Student 12:
+  Frames tracked: 1942
+  Top emotion: neutral
+  Top action: writing_notes
+  Engagement: 99.3%
+
+Student 13:
+  Frames tracked: 1942
+  Top emotion: sad
+  Top action: neutral
+  Engagement: 91.1%
+
+Student 14:
+  Frames tracked: 20
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+------------------------------------------------------------
+OVERALL STATISTICS
+------------------------------------------------------------
+
+Emotion distribution: {'neutral': 14930, 'sad': 2575, 'disgust': 1596, 'angry': 1093, 'happy': 643, 'fear': 174}
+Action distribution: {'neutral': 15258, 'writing_notes': 3179, 'using_mobile': 1212, 'looking_away': 759, 'sleeping': 462, 'raising_hand': 141}
+
+Average class engagement: 83.9%
