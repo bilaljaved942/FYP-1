@@ -1,0 +1,18 @@
+# Ignore all mp4 files
+*.mp4
+
+# Ignore output folder videos
+outputs/*.mp4
+
+# Ignore large media files
+*.avi
+*.mov
+*.mkv
+
+# Ignore model weights if large
+*.h5
+*.keras
+
+# Ignore system files
+__pycache__/
+*.pyc
