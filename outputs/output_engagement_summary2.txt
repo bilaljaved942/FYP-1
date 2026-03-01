@@ -1,0 +1,230 @@
+============================================================
+CLASSROOM ENGAGEMENT SUMMARY
+============================================================
+
+Total Students: 36
+
+Student 1:
+  Frames tracked: 15
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 2:
+  Frames tracked: 1691
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 3:
+  Frames tracked: 15
+  Top emotion: happy
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 4:
+  Frames tracked: 1691
+  Top emotion: neutral
+  Top action: using_mobile
+  Engagement: 26.5%
+
+Student 5:
+  Frames tracked: 1691
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 77.6%
+
+Student 6:
+  Frames tracked: 1691
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 7:
+  Frames tracked: 895
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 8:
+  Frames tracked: 1669
+  Top emotion: angry
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 9:
+  Frames tracked: 1430
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 10:
+  Frames tracked: 1552
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 97.6%
+
+Student 11:
+  Frames tracked: 1671
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 12:
+  Frames tracked: 266
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 13:
+  Frames tracked: 57
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 14:
+  Frames tracked: 1677
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 15:
+  Frames tracked: 746
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 97.3%
+
+Student 16:
+  Frames tracked: 996
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 97.7%
+
+Student 17:
+  Frames tracked: 299
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 18:
+  Frames tracked: 1484
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 99.5%
+
+Student 19:
+  Frames tracked: 626
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 20:
+  Frames tracked: 22
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 21:
+  Frames tracked: 9
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 22:
+  Frames tracked: 24
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 23:
+  Frames tracked: 5
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 24:
+  Frames tracked: 325
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 96.0%
+
+Student 25:
+  Frames tracked: 39
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 26:
+  Frames tracked: 49
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 27:
+  Frames tracked: 51
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 28:
+  Frames tracked: 691
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 29:
+  Frames tracked: 8
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 30:
+  Frames tracked: 29
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 31:
+  Frames tracked: 86
+  Top emotion: neutral
+  Top action: writing_notes
+  Engagement: 100.0%
+
+Student 32:
+  Frames tracked: 57
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 33:
+  Frames tracked: 6
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 34:
+  Frames tracked: 41
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 35:
+  Frames tracked: 8
+  Top emotion: neutral
+  Top action: writing_notes
+  Engagement: 100.0%
+
+Student 36:
+  Frames tracked: 20
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+------------------------------------------------------------
+OVERALL STATISTICS
+------------------------------------------------------------
+
+Emotion distribution: {'neutral': 16046, 'angry': 2313, 'sad': 1494, 'happy': 952, 'disgust': 582, 'fear': 245}
+Action distribution: {'neutral': 18022, 'writing_notes': 1848, 'using_mobile': 1622, 'sleeping': 64, 'raising_hand': 39, 'looking_away': 37}
+
+Average class engagement: 97.0%
