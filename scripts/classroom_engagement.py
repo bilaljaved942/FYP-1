@@ -29,13 +29,10 @@ warnings.filterwarnings('ignore')
 # ==================== CONFIGURATION ====================
 # Paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # FYP-1 directory
-VIDEO_PATH = os.path.join(BASE_DIR, "final_video.mp4")
-OUTPUT_VIDEO_PATH = os.path.join(BASE_DIR, "outputs", "output_engagement2.mp4")
-OUTPUT_JSON_PATH = os.path.join(BASE_DIR, "outputs", "output_engagement2.json")
-OUTPUT_SUMMARY_PATH = os.path.join(BASE_DIR, "outputs", "output_engagement_summary2.txt")
-FACES_DIR = os.path.join(BASE_DIR, "outputs", "faces_engagement")
 EMOTION_MODEL_PATH = os.path.join(BASE_DIR, "best_cnn_v2_emotions.keras")
 CLASS_MAP_PATH = os.path.join(BASE_DIR, "class_map.json")
+# Video path and output paths are resolved at runtime from --video CLI argument
+# (see main() — defaults to final_video1.mp4 if not provided)
 
 # Device
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -63,9 +60,10 @@ NEW_TRACK_GUARD_DIST = 55      # Reduced from 80 — adjacent seated students ar
 REGISTRATION_CLUSTER_DIST = 55 # Reduced from 80 — prevents merging adjacent students who sit close together
 
 # Re-identification parameters (for students leaving and returning)
-REID_SPATIAL_THRESHOLD = 120       # Wide enough to re-id students who moved slightly between sessions
-REID_APPEARANCE_THRESHOLD = 0.70   # Balanced appearance similarity threshold for re-id
-REID_MAX_DEAD_AGE = 1800           # 60s at 30fps; prevents stale resurrections
+# NOTE: No spatial gate — students can return to ANY seat in the classroom.
+# Re-ID is purely appearance-based (CLIP body embedding similarity).
+REID_APPEARANCE_THRESHOLD = 0.70   # Min CLIP cosine similarity for appearance match
+REID_MAX_DEAD_AGE = 1800           # 60s at 30fps; max age of a dead track kept for re-id
 APPEARANCE_UPDATE_INTERVAL = 30    # How often (in frames) to update appearance embedding
 
 # Classification parameters
@@ -110,7 +108,8 @@ CLIP_LABELS = {
     ]
 }
 
-os.makedirs(FACES_DIR, exist_ok=True)
+# (No faces_engagement directory — face images are not used by the pipeline)
+os.makedirs(os.path.join(BASE_DIR, "outputs"), exist_ok=True)
 
 # ==================== GLOBALS ====================
 tracks = []
@@ -334,79 +333,78 @@ def compute_appearance_embedding(crop):
     except:
         return None
 
+# ==================== FRAME NORMALIZATION ====================
+def normalize_frame(frame):
+    """Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) to the luminance
+    channel in LAB color space.  This normalizes brightness and contrast so that
+    detection and classification are robust across classroom lighting conditions
+    (bright morning light, dim evenings, shadows, projector glare, etc.)."""
+    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+    l_ch, a_ch, b_ch = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    l_eq = clahe.apply(l_ch)
+    return cv2.cvtColor(cv2.merge([l_eq, a_ch, b_ch]), cv2.COLOR_LAB2BGR)
+
 # ==================== RE-IDENTIFICATION ====================
 def try_reidentify(detection, frame, frame_id):
-    """Try to match a new detection to a dead (previously removed) track.
-    Returns a resurrected Track if matched, or None."""
+    """Try to match a new detection to a dead (previously removed) track using
+    APPEARANCE-ONLY matching (CLIP body embedding cosine similarity).
+
+    No spatial gate is applied — a student may return and sit on a completely
+    different seat, so location is irrelevant for re-identification.
+    """
     global dead_tracks
-    
+
     if not dead_tracks:
         return None
-    
-    det_center = np.array([
-        (detection[0] + detection[2]) / 2,
-        (detection[1] + detection[3]) / 2
-    ])
-    
+
     # Compute appearance embedding for the new detection
     body_crop = extract_body(frame, detection)
     det_embedding = compute_appearance_embedding(body_crop)
-    
+
+    # If no embedding available, skip re-id (can't match without appearance)
+    if det_embedding is None:
+        return None
+
     best_match = None
     best_score = -1
-    
+
     for i, dead in enumerate(dead_tracks):
         # Skip if too old
         if (frame_id - dead.last_seen) > REID_MAX_DEAD_AGE:
             continue
-        
-        # Spatial distance check
-        dead_center = dead.get_center()
-        dist = np.linalg.norm(det_center - dead_center)
-        if dist > REID_SPATIAL_THRESHOLD:
+
+        # Skip if dead track has no embedding to compare against
+        if dead.appearance_embedding is None:
             continue
-        
-        # Appearance similarity check (if both embeddings available)
-        if det_embedding is not None and dead.appearance_embedding is not None:
-            similarity = float(np.dot(det_embedding, dead.appearance_embedding))
-            if similarity < REID_APPEARANCE_THRESHOLD:
-                continue
-            # Combined score: higher similarity and closer distance is better
-            score = similarity * (1 - dist / REID_SPATIAL_THRESHOLD)
-        else:
-            # Fallback: only spatial match (distance must be very close)
-            if dist > REID_SPATIAL_THRESHOLD * 0.5:
-                continue
-            score = 1 - dist / REID_SPATIAL_THRESHOLD
-        
-        if score > best_score:
-            best_score = score
+
+        # Pure appearance similarity (cosine distance, embeddings are L2-normalized)
+        similarity = float(np.dot(det_embedding, dead.appearance_embedding))
+        if similarity < REID_APPEARANCE_THRESHOLD:
+            continue
+
+        if similarity > best_score:
+            best_score = similarity
             best_match = i
-    
+
     if best_match is not None:
-        # Resurrect the dead track
         old_track = dead_tracks.pop(best_match)
-        
-        # Create a new track with the detection but keep the old student_id
+
         new_track = Track(detection, frame_id)
         new_track.student_id = old_track.student_id
         new_track.confirmed = True
-        new_track.hits = MIN_HITS_TO_CONFIRM  # Already confirmed
+        new_track.hits = MIN_HITS_TO_CONFIRM
         new_track.appearance_embedding = old_track.appearance_embedding
         new_track.face_img = old_track.face_img
-        
-        face_img = extract_face(frame, detection)
-        if face_img is not None:
-            new_track.face_img = face_img
-        
-        # Update appearance embedding
-        if det_embedding is not None:
-            new_track.appearance_embedding = det_embedding
-            new_track.last_embedding_frame = frame_id
-        
-        print(f"  ↩ Student {old_track.student_id} RE-IDENTIFIED (was out of frame)")
+
+        # Refresh embedding with current detection
+        new_track.appearance_embedding = det_embedding
+        new_track.last_embedding_frame = frame_id
+
+        print(f"  \u21a9 Student {old_track.student_id} RE-IDENTIFIED "
+              f"(similarity={best_score:.3f})")
         return new_track
-    
+
     return None
 
 # ==================== MODEL INITIALIZATION ====================
@@ -620,13 +618,7 @@ def assign_ids():
                 if str(next_student_id) not in json_data["students"]:
                     json_data["students"][str(next_student_id)] = {"frames": {}}
             
-            if track.face_img is not None:
-                try:
-                    cv2.imwrite(f"{FACES_DIR}/student_{next_student_id}.jpg", track.face_img)
-                except:
-                    pass
-            
-            print(f"  ★ Student {next_student_id} registered")
+            print(f"  \u2605 Student {next_student_id} registered")
             next_student_id += 1
 
 def cluster_detections_by_center(detections, dist_threshold):
@@ -711,7 +703,7 @@ def registration_phase(cap):
         track.student_id = next_student_id
         track.confirmed = True
         json_data["students"][str(next_student_id)] = {"frames": {}}
-        print(f"  ★ Student {track.student_id} registered")
+        print(f"  \u2605 Student {track.student_id} registered")
         next_student_id += 1
     
     # Set global cap: registered students + 2 buffer for genuine latecomers
@@ -722,13 +714,17 @@ def registration_phase(cap):
     registration_complete = True
 
 def process_frame_optimized(frame, frame_id):
-    """Process frame with tracking, re-identification, and BATCH classification"""
+    """Process frame: normalize for lighting, track, re-id, batch-classify."""
     global tracks, dead_tracks, json_data
+
+    # Normalize a copy for all AI processing (YOLO, emotion, action, Re-ID).
+    # The original unreformed frame is written to the output video so it looks natural.
+    norm_frame = normalize_frame(frame)
+
+    detections = detect_persons(norm_frame)
     
-    detections = detect_persons(frame)
-    
-    frame_area = frame.shape[0] * frame.shape[1]
-    detections = [d for d in detections 
+    frame_area = norm_frame.shape[0] * norm_frame.shape[1]
+    detections = [d for d in detections
                   if (d[2] - d[0]) * (d[3] - d[1]) / frame_area >= MIN_TRACK_AREA_RATIO]
     
     for track in tracks:
@@ -749,18 +745,18 @@ def process_frame_optimized(frame, frame_id):
         
         for i, j in zip(row_idx, col_idx):
             if cost[i, j] < (1 - IOU_MATCH_THRESHOLD):
-                face_img = extract_face(frame, detections[i])
+                face_img = extract_face(norm_frame, detections[i])
                 tracks[j].update(detections[i], frame_id, face_img)
                 matched_dets.add(i)
                 matched_trks.add(j)
-        
+
         for i, det in enumerate(detections):
             if i in matched_dets:
                 continue
-            
+
             best_track = None
             best_iou = OVERLAP_MERGE_THRESHOLD
-            
+
             for j, track in enumerate(tracks):
                 if j in matched_trks:
                     continue
@@ -768,9 +764,9 @@ def process_frame_optimized(frame, frame_id):
                 if iou > best_iou:
                     best_iou = iou
                     best_track = j
-            
+
             if best_track is not None:
-                face_img = extract_face(frame, det)
+                face_img = extract_face(norm_frame, det)
                 tracks[best_track].update(det, frame_id, face_img)
                 matched_dets.add(i)
                 matched_trks.add(best_track)
@@ -779,16 +775,13 @@ def process_frame_optimized(frame, frame_id):
     for i, det in enumerate(detections):
         if i in matched_dets:
             continue
-        
-        # Try to re-identify from dead tracks before creating a new track
-        resurrected = try_reidentify(det, frame, frame_id)
+
+        resurrected = try_reidentify(det, norm_frame, frame_id)
         if resurrected is not None:
             tracks.append(resurrected)
             matched_dets.add(i)
         else:
-            # Spatial proximity guard: do NOT spawn a new track if a confirmed
-            # track is already nearby — this detection is likely a jitter/shift
-            # of an existing student that the Hungarian matching missed.
+            # Spatial proximity guard: skip if a confirmed track is already nearby
             det_center = np.array([(det[0] + det[2]) / 2.0, (det[1] + det[3]) / 2.0])
             too_close = False
             for track in tracks:
@@ -797,9 +790,8 @@ def process_frame_optimized(frame, frame_id):
                     if dist < NEW_TRACK_GUARD_DIST:
                         too_close = True
                         break
-            
+
             if not too_close:
-                # NEW STUDENT: Create a brand new track
                 new_track = Track(det, frame_id)
                 tracks.append(new_track)
             matched_dets.add(i)
@@ -824,7 +816,7 @@ def process_frame_optimized(frame, frame_id):
     # --- Update appearance embeddings periodically for confirmed tracks ---
     for track in tracks:
         if track.confirmed and (frame_id - track.last_embedding_frame) >= APPEARANCE_UPDATE_INTERVAL:
-            body_crop = extract_body(frame, track.smooth_bbox)
+            body_crop = extract_body(norm_frame, track.smooth_bbox)
             emb = compute_appearance_embedding(body_crop)
             if emb is not None:
                 track.appearance_embedding = emb
@@ -837,9 +829,9 @@ def process_frame_optimized(frame, frame_id):
     if not confirmed_tracks:
         return []
     
-    # Extract all crops at once
-    face_crops = [extract_face(frame, t.smooth_bbox) for t in confirmed_tracks]
-    body_crops = [extract_body(frame, t.smooth_bbox) for t in confirmed_tracks]
+    # Extract all crops from the normalized frame (better classification under bad lighting)
+    face_crops = [extract_face(norm_frame, t.smooth_bbox) for t in confirmed_tracks]
+    body_crops = [extract_body(norm_frame, t.smooth_bbox) for t in confirmed_tracks]
     
     # Batch classify
     emotions = batch_predict_emotions(face_crops)
@@ -981,76 +973,63 @@ def clean_and_renumber_students(total_video_frames):
         id_remap[old_sid] = new_id
         new_students[new_id] = data
 
-    # --- Step 3: Rename face images to match new IDs ---
-    for old_sid, new_id in id_remap.items():
-        old_face = os.path.join(FACES_DIR, f"student_{old_sid}.jpg")
-        new_face = os.path.join(FACES_DIR, f"student_{new_id}_clean.jpg")
-        if os.path.exists(old_face):
-            try:
-                os.rename(old_face, new_face)
-            except Exception:
-                pass
-
-    # Finalize renames (remove _clean suffix now that all renames are done to avoid conflicts)
-    for new_id in id_remap.values():
-        tmp = os.path.join(FACES_DIR, f"student_{new_id}_clean.jpg")
-        final = os.path.join(FACES_DIR, f"student_{new_id}.jpg")
-        if os.path.exists(tmp):
-            try:
-                if os.path.exists(final):
-                    os.remove(final)
-                os.rename(tmp, final)
-            except Exception:
-                pass
-
-    # Remove face images for deleted ghost students
-    for old_sid in removed:
-        ghost_face = os.path.join(FACES_DIR, f"student_{old_sid}.jpg")
-        if os.path.exists(ghost_face):
-            try:
-                os.remove(ghost_face)
-            except Exception:
-                pass
-
-    # --- Step 4: Update global json_data ---
+    # --- Step 3: Update global json_data ---
     json_data["students"] = new_students
     json_data["video_info"]["total_students"] = len(new_students)
 
-    print(f"   📊 Final student count in output: {len(new_students)}")
+    print(f"   \U0001f4ca Final student count in output: {len(new_students)}")
     return len(new_students)
 
 # ==================== MAIN ====================
 def main():
+    import argparse
     global json_data
-    
+
+    parser = argparse.ArgumentParser(description="Classroom Engagement Analysis")
+    parser.add_argument(
+        "--video",
+        default=os.path.join(BASE_DIR, "final_video1.mp4"),
+        help="Path to input video file (default: FYP-1/final_video1.mp4)"
+    )
+    args = parser.parse_args()
+    video_path = args.video
+
+    # Derive output paths from the input video filename
+    video_stem = os.path.splitext(os.path.basename(video_path))[1]
+    output_video_path  = os.path.join(BASE_DIR, "outputs", f"output_{video_stem}.mp4")
+    output_json_path   = os.path.join(BASE_DIR, "outputs", f"output_{video_stem}.json")
+    output_summary_path = os.path.join(BASE_DIR, "outputs", f"output_{video_stem}_summary.txt")
+
     init_models()
-    
-    if not os.path.exists(VIDEO_PATH):
-        print(f"❌ ERROR: Video not found: {VIDEO_PATH}")
+
+    if not os.path.exists(video_path):
+        print(f"\u274c ERROR: Video not found: {video_path}")
         return
-    
-    cap = cv2.VideoCapture(VIDEO_PATH)
+
+    cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
-    print(f"📹 Video: {w}x{h} @ {fps:.1f}fps, {total} frames")
-    print(f"📁 Output video: {OUTPUT_VIDEO_PATH}")
-    print(f"📁 Output JSON: {OUTPUT_JSON_PATH}\n")
+
+    print(f"\U0001f4f9 Video: {video_path}")
+    print(f"   {w}x{h} @ {fps:.1f}fps, {total} frames")
+    print(f"\U0001f4c1 Output video: {output_video_path}")
+    print(f"\U0001f4c1 Output JSON:  {output_json_path}\n")
     
     json_data["video_info"] = {
+        "video": video_path,
         "fps": fps,
         "width": w,
         "height": h,
         "total_frames": total
     }
-    
+
     registration_phase(cap)
-    
+
     json_data["video_info"]["total_students"] = next_student_id - 1
-    
-    out = cv2.VideoWriter(OUTPUT_VIDEO_PATH, cv2.VideoWriter_fourcc(*"avc1"), fps, (w, h))
+
+    out = cv2.VideoWriter(output_video_path, cv2.VideoWriter_fourcc(*"avc1"), fps, (w, h))
     
     start = time.time()
     frame_id = 0
@@ -1098,26 +1077,25 @@ def main():
     clean_count = clean_and_renumber_students(total)
     json_data["video_info"]["total_students"] = clean_count
 
-    print(f"\n💾 Saving JSON to: {OUTPUT_JSON_PATH}")
-    with open(OUTPUT_JSON_PATH, "w") as f:
+    print(f"\n\U0001f4be Saving JSON to: {output_json_path}")
+    with open(output_json_path, "w") as f:
         json.dump(json_data, f, indent=2)
     
     summary = generate_summary()
-    print(f"💾 Saving summary to: {OUTPUT_SUMMARY_PATH}")
-    with open(OUTPUT_SUMMARY_PATH, "w") as f:
+    print(f"\U0001f4be Saving summary to: {output_summary_path}")
+    with open(output_summary_path, "w") as f:
         f.write(summary)
     
     print("\n" + summary)
     
     print("\n" + "=" * 60)
-    print("✅ PROCESSING COMPLETE!")
+    print("\u2705 PROCESSING COMPLETE!")
     print("=" * 60)
-    print(f"\n⏱️  Time: {elapsed:.1f}s ({total/elapsed:.1f} fps)")
-    print(f"👥 Real students in output: {clean_count}")
-    print(f"\n📁 Output video: {OUTPUT_VIDEO_PATH}")
-    print(f"📁 Output JSON: {OUTPUT_JSON_PATH}")
-    print(f"📁 Summary: {OUTPUT_SUMMARY_PATH}")
-    print(f"📁 Faces: {FACES_DIR}/")
+    print(f"\n\u23f1\ufe0f  Time: {elapsed:.1f}s ({total/elapsed:.1f} fps)")
+    print(f"\U0001f465 Real students in output: {clean_count}")
+    print(f"\n\U0001f4c1 Output video:   {output_video_path}")
+    print(f"\U0001f4c1 Output JSON:    {output_json_path}")
+    print(f"\U0001f4c1 Summary:        {output_summary_path}")
 
 if __name__ == "__main__":
     main()

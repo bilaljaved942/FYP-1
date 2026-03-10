@@ -14,19 +14,19 @@ Student 2:
   Frames tracked: 1212
   Top emotion: neutral
   Top action: using_mobile
-  Engagement: 1.2%
+  Engagement: 1.5%
 
 Student 3:
   Frames tracked: 1212
   Top emotion: neutral
   Top action: neutral
-  Engagement: 65.5%
+  Engagement: 67.4%
 
 Student 4:
-  Frames tracked: 1076
+  Frames tracked: 1077
   Top emotion: neutral
   Top action: neutral
-  Engagement: 96.6%
+  Engagement: 97.8%
 
 Student 5:
   Frames tracked: 1212
@@ -35,58 +35,58 @@ Student 5:
   Engagement: 100.0%
 
 Student 6:
-  Frames tracked: 866
+  Frames tracked: 807
   Top emotion: neutral
   Top action: neutral
   Engagement: 100.0%
 
 Student 7:
-  Frames tracked: 1195
+  Frames tracked: 1196
   Top emotion: angry
   Top action: neutral
-  Engagement: 99.7%
+  Engagement: 99.2%
 
 Student 8:
-  Frames tracked: 1147
+  Frames tracked: 964
   Top emotion: neutral
   Top action: neutral
   Engagement: 100.0%
 
 Student 9:
-  Frames tracked: 913
+  Frames tracked: 922
   Top emotion: neutral
   Top action: neutral
   Engagement: 100.0%
 
 Student 10:
-  Frames tracked: 661
-  Top emotion: happy
+  Frames tracked: 419
+  Top emotion: sad
   Top action: neutral
-  Engagement: 100.0%
+  Engagement: 98.6%
 
 Student 11:
-  Frames tracked: 630
-  Top emotion: neutral
+  Frames tracked: 936
+  Top emotion: disgust
   Top action: neutral
-  Engagement: 100.0%
+  Engagement: 99.1%
 
 Student 12:
   Frames tracked: 1003
   Top emotion: neutral
   Top action: neutral
-  Engagement: 99.7%
+  Engagement: 100.0%
 
 Student 13:
-  Frames tracked: 173
+  Frames tracked: 199
   Top emotion: neutral
   Top action: neutral
-  Engagement: 96.5%
+  Engagement: 97.0%
 
 ------------------------------------------------------------
 OVERALL STATISTICS
 ------------------------------------------------------------
 
-Emotion distribution: {'neutral': 9254, 'angry': 1271, 'happy': 931, 'sad': 752, 'disgust': 249, 'fear': 55}
-Action distribution: {'neutral': 9861, 'using_mobile': 1616, 'writing_notes': 925, 'raising_hand': 61, 'sleeping': 33, 'looking_away': 16}
+Emotion distribution: {'neutral': 8995, 'angry': 1375, 'disgust': 848, 'sad': 661, 'happy': 385, 'fear': 107}
+Action distribution: {'neutral': 9885, 'using_mobile': 1589, 'writing_notes': 772, 'raising_hand': 72, 'looking_away': 32, 'sleeping': 21}
 
-Average class engagement: 89.2%
+Average class engagement: 89.3%

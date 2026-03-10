@@ -1,0 +1,62 @@
+============================================================
+CLASSROOM ENGAGEMENT SUMMARY
+============================================================
+
+Total Students: 8
+
+Student 1:
+  Frames tracked: 4744
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 83.8%
+
+Student 2:
+  Frames tracked: 3759
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 99.8%
+
+Student 3:
+  Frames tracked: 7625
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 4:
+  Frames tracked: 2113
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 100.0%
+
+Student 5:
+  Frames tracked: 7387
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 84.1%
+
+Student 6:
+  Frames tracked: 7610
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 95.8%
+
+Student 7:
+  Frames tracked: 1543
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 95.0%
+
+Student 8:
+  Frames tracked: 4954
+  Top emotion: neutral
+  Top action: neutral
+  Engagement: 99.5%
+
+------------------------------------------------------------
+OVERALL STATISTICS
+------------------------------------------------------------
+
+Emotion distribution: {'neutral': 29831, 'happy': 3798, 'disgust': 3280, 'angry': 1637, 'sad': 813, 'fear': 376}
+Action distribution: {'neutral': 34581, 'writing_notes': 2584, 'sleeping': 1125, 'using_mobile': 758, 'looking_away': 487, 'raising_hand': 200}
+
+Average class engagement: 94.8%
