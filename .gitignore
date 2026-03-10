@@ -16,3 +16,10 @@ outputs/*.mp4
 # Ignore system files
 __pycache__/
 *.pyc
+
+# Ignore virtual environments
+venv*/
+.venv*/
+env/
+.env/
+ENV/

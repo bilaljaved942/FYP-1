@@ -46,28 +46,35 @@ NUM_WORKERS = 4  # Number of threads for parallel processing
 BATCH_SIZE = 8  # Batch size for classification
 
 # Detection parameters
-YOLO_CONF = 0.12
-YOLO_CONF_REGISTRATION = 0.12
+YOLO_CONF = 0.22              # Balanced: low enough to catch back-row/occluded students, high enough to block chairs/bags
+YOLO_CONF_REGISTRATION = 0.18  # Even lower for registration to make sure ALL students are found initially
 IMG_SIZE = 640
 NMS_IOU_THRESHOLD = 0.50
 
 # Tracking parameters
 IOU_MATCH_THRESHOLD = 0.2
 OVERLAP_MERGE_THRESHOLD = 0.40
-MAX_MISSING_FRAMES = 900
-MIN_HITS_TO_CONFIRM = 5
+MAX_MISSING_FRAMES = 150       # 5s at 30fps; long enough for brief occlusions
+MIN_HITS_TO_CONFIRM = 7        # Balanced: harder than 5 but not as strict as 10 for partially-visible students
 MIN_TRACK_AREA_RATIO = 0.0008
 REGISTRATION_FRAMES = 150
 SMOOTH_ALPHA = 0.2
+NEW_TRACK_GUARD_DIST = 55      # Reduced from 80 — adjacent seated students are often 60-80px apart in back rows
+REGISTRATION_CLUSTER_DIST = 55 # Reduced from 80 — prevents merging adjacent students who sit close together
 
 # Re-identification parameters (for students leaving and returning)
-REID_SPATIAL_THRESHOLD = 150       # Max pixel distance (center-to-center) for spatial match
-REID_APPEARANCE_THRESHOLD = 0.65   # Min CLIP cosine similarity for appearance match
-REID_MAX_DEAD_AGE = 9000           # Max frames to keep a dead track for re-id
+REID_SPATIAL_THRESHOLD = 120       # Wide enough to re-id students who moved slightly between sessions
+REID_APPEARANCE_THRESHOLD = 0.70   # Balanced appearance similarity threshold for re-id
+REID_MAX_DEAD_AGE = 1800           # 60s at 30fps; prevents stale resurrections
 APPEARANCE_UPDATE_INTERVAL = 30    # How often (in frames) to update appearance embedding
 
 # Classification parameters
 FRAME_SMOOTHING = 5
+
+# Post-processing: minimum fraction of total video frames a student must appear
+# in to be considered real (filters ghost/phantom detections from the output).
+# E.g. 0.05 = student must appear in at least 5% of the video's total frames.
+MIN_FRAMES_FRACTION = 0.05
 
 # CLIP action prompts
 CLIP_LABELS = {
@@ -117,6 +124,7 @@ ordered_classes = []
 CLIP_CLASSES = []
 registration_complete = False
 next_student_id = 1
+MAX_ALLOWED_STUDENTS = None    # Set after registration; caps total student IDs issued
 
 # Thread lock for JSON updates
 json_lock = threading.Lock()
@@ -594,11 +602,17 @@ def merge_overlapping_tracks():
     tracks = merged
 
 def assign_ids():
-    """Assign student IDs to confirmed tracks"""
+    """Assign student IDs to confirmed tracks.
+    Respects the global MAX_ALLOWED_STUDENTS cap to prevent runaway ID inflation."""
     global next_student_id, json_data
     
     for track in tracks:
         if track.is_confirmed() and track.student_id is None:
+            # Global cap: only register new students up to MAX_ALLOWED_STUDENTS
+            if MAX_ALLOWED_STUDENTS is not None and next_student_id > MAX_ALLOWED_STUDENTS:
+                print(f"  ⚠ Student cap reached ({MAX_ALLOWED_STUDENTS}), skipping new track")
+                continue
+            
             track.student_id = next_student_id
             track.confirmed = True
             
@@ -615,9 +629,49 @@ def assign_ids():
             print(f"  ★ Student {next_student_id} registered")
             next_student_id += 1
 
+def cluster_detections_by_center(detections, dist_threshold):
+    """Group detections by spatial proximity of their centers.
+    Dogs returns one representative box per cluster (the median box in each cluster).
+    This correctly handles the same seated student appearing with slightly different boxes
+    across multiple frames — unlike IoU NMS which would split them into duplicates."""
+    if not detections:
+        return []
+    
+    centers = np.array([
+        [(d[0] + d[2]) / 2.0, (d[1] + d[3]) / 2.0] for d in detections
+    ])
+    
+    assigned = [-1] * len(detections)
+    cluster_id = 0
+    
+    for i in range(len(detections)):
+        if assigned[i] != -1:
+            continue
+        assigned[i] = cluster_id
+        for j in range(i + 1, len(detections)):
+            if assigned[j] != -1:
+                continue
+            dist = np.linalg.norm(centers[i] - centers[j])
+            if dist <= dist_threshold:
+                assigned[j] = cluster_id
+        cluster_id += 1
+    
+    # One representative box per cluster: take median of all boxes in cluster
+    result = []
+    for cid in range(cluster_id):
+        members = [detections[k] for k in range(len(detections)) if assigned[k] == cid]
+        if members:
+            median_box = np.median(members, axis=0)
+            result.append(median_box)
+    
+    return result
+
+
 def registration_phase(cap):
-    """Scan initial frames to find all students"""
-    global tracks, registration_complete, next_student_id
+    """Scan initial frames to find all students using spatial center-based clustering.
+    Replaces NMS-based merging which would split the same slightly-shifted student into
+    multiple registration entries."""
+    global tracks, registration_complete, next_student_id, MAX_ALLOWED_STUDENTS
     
     print(f"📝 Registration phase: scanning {REGISTRATION_FRAMES} frames...")
     
@@ -639,9 +693,12 @@ def registration_phase(cap):
         if (i + 1) % 30 == 0:
             print(f"   Frame {i + 1}/{REGISTRATION_FRAMES}")
     
-    # Use a very strict NMS for registration since we are accumulating 150 frames
-    # If a student sways, they leave multiple boxes. We need to merge everything that overlaps even a little.
-    final_positions = strict_nms(all_detections, 0.15)
+    # Step 1: Spatial center-based clustering — groups all boxes from the same physical
+    # seat together regardless of per-frame jitter, then takes the median box.
+    final_positions = cluster_detections_by_center(all_detections, REGISTRATION_CLUSTER_DIST)
+    
+    # Step 2: Final IoU NMS pass to handle any remaining overlaps between nearby seats
+    final_positions = strict_nms(final_positions, NMS_IOU_THRESHOLD)
     
     for bbox in final_positions:
         new_track = Track(bbox, 0)
@@ -656,6 +713,10 @@ def registration_phase(cap):
         json_data["students"][str(next_student_id)] = {"frames": {}}
         print(f"  ★ Student {track.student_id} registered")
         next_student_id += 1
+    
+    # Set global cap: registered students + 2 buffer for genuine latecomers
+    MAX_ALLOWED_STUDENTS = (next_student_id - 1) + 2
+    print(f"   Student count cap set to: {MAX_ALLOWED_STUDENTS}\n")
     
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
     registration_complete = True
@@ -725,9 +786,22 @@ def process_frame_optimized(frame, frame_id):
             tracks.append(resurrected)
             matched_dets.add(i)
         else:
-            # NEW STUDENT: Create a brand new track
-            new_track = Track(det, frame_id)
-            tracks.append(new_track)
+            # Spatial proximity guard: do NOT spawn a new track if a confirmed
+            # track is already nearby — this detection is likely a jitter/shift
+            # of an existing student that the Hungarian matching missed.
+            det_center = np.array([(det[0] + det[2]) / 2.0, (det[1] + det[3]) / 2.0])
+            too_close = False
+            for track in tracks:
+                if track.confirmed:
+                    dist = np.linalg.norm(det_center - track.get_center())
+                    if dist < NEW_TRACK_GUARD_DIST:
+                        too_close = True
+                        break
+            
+            if not too_close:
+                # NEW STUDENT: Create a brand new track
+                new_track = Track(det, frame_id)
+                tracks.append(new_track)
             matched_dets.add(i)
     
     # --- Move dead tracks to graveyard (for future re-identification) ---
@@ -871,6 +945,80 @@ def generate_summary():
     
     return "\n".join(summary_lines)
 
+# ==================== POST-PROCESSING ====================
+def clean_and_renumber_students(total_video_frames):
+    """Remove ghost/phantom student entries and re-number surviving students
+    with clean sequential IDs (1, 2, 3, ...).
+
+    A student must have been tracked for at least MIN_FRAMES_FRACTION of the
+    total video frames to be considered a real detection and kept in the output.
+    Face images in FACES_DIR are also renamed to match the new IDs.
+    """
+    global json_data
+
+    min_frames = int(total_video_frames * MIN_FRAMES_FRACTION)
+    print(f"\n🧹 Cleaning output — minimum frames threshold: {min_frames} "
+          f"({MIN_FRAMES_FRACTION*100:.0f}% of {total_video_frames} frames)")
+
+    # --- Step 1: Collect surviving students (sorted by original ID for stability) ---
+    survivors = []
+    removed = []
+    for sid, data in sorted(json_data["students"].items(), key=lambda x: int(x[0])):
+        frame_count = len(data["frames"])
+        if frame_count >= min_frames:
+            survivors.append((sid, data))
+        else:
+            removed.append(sid)
+            print(f"   ✂ Removed Student {sid} ({frame_count} frames — below threshold)")
+
+    print(f"   ✅ Kept {len(survivors)} real students, removed {len(removed)} ghosts")
+
+    # --- Step 2: Build clean re-numbered students dict ---
+    new_students = {}
+    id_remap = {}  # old_id -> new_id string
+    for new_idx, (old_sid, data) in enumerate(survivors, start=1):
+        new_id = str(new_idx)
+        id_remap[old_sid] = new_id
+        new_students[new_id] = data
+
+    # --- Step 3: Rename face images to match new IDs ---
+    for old_sid, new_id in id_remap.items():
+        old_face = os.path.join(FACES_DIR, f"student_{old_sid}.jpg")
+        new_face = os.path.join(FACES_DIR, f"student_{new_id}_clean.jpg")
+        if os.path.exists(old_face):
+            try:
+                os.rename(old_face, new_face)
+            except Exception:
+                pass
+
+    # Finalize renames (remove _clean suffix now that all renames are done to avoid conflicts)
+    for new_id in id_remap.values():
+        tmp = os.path.join(FACES_DIR, f"student_{new_id}_clean.jpg")
+        final = os.path.join(FACES_DIR, f"student_{new_id}.jpg")
+        if os.path.exists(tmp):
+            try:
+                if os.path.exists(final):
+                    os.remove(final)
+                os.rename(tmp, final)
+            except Exception:
+                pass
+
+    # Remove face images for deleted ghost students
+    for old_sid in removed:
+        ghost_face = os.path.join(FACES_DIR, f"student_{old_sid}.jpg")
+        if os.path.exists(ghost_face):
+            try:
+                os.remove(ghost_face)
+            except Exception:
+                pass
+
+    # --- Step 4: Update global json_data ---
+    json_data["students"] = new_students
+    json_data["video_info"]["total_students"] = len(new_students)
+
+    print(f"   📊 Final student count in output: {len(new_students)}")
+    return len(new_students)
+
 # ==================== MAIN ====================
 def main():
     global json_data
@@ -945,7 +1093,11 @@ def main():
         out.release()
     
     elapsed = time.time() - start
-    
+
+    # ---- POST-PROCESSING: Remove ghost students, re-number clean IDs ----
+    clean_count = clean_and_renumber_students(total)
+    json_data["video_info"]["total_students"] = clean_count
+
     print(f"\n💾 Saving JSON to: {OUTPUT_JSON_PATH}")
     with open(OUTPUT_JSON_PATH, "w") as f:
         json.dump(json_data, f, indent=2)
@@ -961,7 +1113,7 @@ def main():
     print("✅ PROCESSING COMPLETE!")
     print("=" * 60)
     print(f"\n⏱️  Time: {elapsed:.1f}s ({total/elapsed:.1f} fps)")
-    print(f"👥 Total students: {next_student_id - 1}")
+    print(f"👥 Real students in output: {clean_count}")
     print(f"\n📁 Output video: {OUTPUT_VIDEO_PATH}")
     print(f"📁 Output JSON: {OUTPUT_JSON_PATH}")
     print(f"📁 Summary: {OUTPUT_SUMMARY_PATH}")
