@@ -43,28 +43,30 @@ NUM_WORKERS = 4  # Number of threads for parallel processing
 BATCH_SIZE = 8  # Batch size for classification
 
 # Detection parameters
-YOLO_CONF = 0.22              # Balanced: low enough to catch back-row/occluded students, high enough to block chairs/bags
-YOLO_CONF_REGISTRATION = 0.18  # Even lower for registration to make sure ALL students are found initially
+YOLO_CONF = 0.25              # Balanced: catches real students, avoids chairs/bags
+YOLO_CONF_REGISTRATION = 0.22  # Slightly lower for registration to catch all seated students
 IMG_SIZE = 640
-NMS_IOU_THRESHOLD = 0.50
+NMS_IOU_THRESHOLD = 0.50       # Standard NMS threshold
 
 # Tracking parameters
-IOU_MATCH_THRESHOLD = 0.2
+IOU_MATCH_THRESHOLD = 0.10     # Low: allow matching even with small overlap (moving students)
 OVERLAP_MERGE_THRESHOLD = 0.40
-MAX_MISSING_FRAMES = 150       # 5s at 30fps; long enough for brief occlusions
-MIN_HITS_TO_CONFIRM = 7        # Balanced: harder than 5 but not as strict as 10 for partially-visible students
+MAX_MISSING_FRAMES = 300       # ~10s at 30fps for unconfirmed tracks
+MAX_MISSING_FRAMES_CONFIRMED = 900  # ~30s at 30fps; confirmed students kept alive very long
+MIN_HITS_TO_CONFIRM = 10       # Strict: need 10 consecutive hits to confirm (prevents phantom tracks)
+CENTER_DIST_MATCH_THRESHOLD = 150  # Max pixel distance for center-distance matching (stage 2)
 MIN_TRACK_AREA_RATIO = 0.0008
-REGISTRATION_FRAMES = 150
+REGISTRATION_FRAMES = 180      # 6 seconds at 30fps for thorough initial scan
 SMOOTH_ALPHA = 0.2
-NEW_TRACK_GUARD_DIST = 55      # Reduced from 80 — adjacent seated students are often 60-80px apart in back rows
-REGISTRATION_CLUSTER_DIST = 55 # Reduced from 80 — prevents merging adjacent students who sit close together
+NEW_TRACK_GUARD_DIST = 80      # Large guard: prevents creating duplicate tracks near existing ones
+REGISTRATION_CLUSTER_DIST = 65 # Larger: prevents splitting same person into multiple clusters
 
 # Re-identification parameters (for students leaving and returning)
 # NOTE: No spatial gate — students can return to ANY seat in the classroom.
-# Re-ID is purely appearance-based (CLIP body embedding similarity).
-REID_APPEARANCE_THRESHOLD = 0.70   # Min CLIP cosine similarity for appearance match
-REID_MAX_DEAD_AGE = 1800           # 60s at 30fps; max age of a dead track kept for re-id
-APPEARANCE_UPDATE_INTERVAL = 30    # How often (in frames) to update appearance embedding
+# Re-ID is purely appearance-based (CLIP body embedding similarity via gallery).
+REID_APPEARANCE_THRESHOLD = 0.40   # Low threshold: gallery matching compensates (max across 10 embeddings)
+REID_MAX_DEAD_AGE = 9999           # Effectively infinite: never discard dead tracks (registry is permanent)
+APPEARANCE_UPDATE_INTERVAL = 15    # Update gallery every 0.5s for richer appearance diversity
 
 # Classification parameters
 FRAME_SMOOTHING = 5
@@ -77,34 +79,36 @@ MIN_FRAMES_FRACTION = 0.05
 # CLIP action prompts
 CLIP_LABELS = {
     "using_mobile": [
-        "a person holding a phone in their hand",
-        "a person looking down at a mobile phone",
-        "a person texting on a smartphone"
+        "a student sitting at a desk holding a smartphone and looking at it",
+        "a student in a classroom looking down at and using a mobile phone",
+        "a person texting on a cell phone while seated at a desk",
+        "a person scrolling on their phone under a desk"
     ],
     "writing_notes": [
-        "a person writing something in a notebook",
-        "a person holding a pen and writing on paper",
-        "a person sitting and writing notes in a notebook"
+        "a student writing with a pen on a notebook at a desk in a classroom",
+        "a student taking notes on paper with a pen while sitting at a desk",
+        "a student bent over a notebook writing something on a desk",
+        "a person holding a pen and writing on paper at a desk"
     ],
     "raising_hand": [
-        "a person raising one hand in the air",
-        "a person with one arm lifted up",
-        "a person stretching their hand upward"
+        "a student raising one hand up high in a classroom",
+        "a student with their arm raised up in the air to answer a question",
+        "a person lifting their hand above their head in class"
     ],
     "sleeping": [
-        "a person sleeping with eyes closed",
-        "a person resting their head on a desk",
-        "a person dozing off with head down"
+        "a student sleeping with their head down on a desk",
+        "a student resting their head on their arms on a desk with eyes closed",
+        "a person dozing off with their head on a classroom desk"
     ],
     "looking_away": [
-        "a person turning their head to the right",
-        "a person turning their head to the left",
-        "a person facing away from the camera"
+        "a student looking sideways away from the front of the classroom",
+        "a student turning their head to talk to another student",
+        "a person in a classroom looking to the side or behind them"
     ],
     "neutral": [
-        "a person sitting still and looking straight",
-        "a person sitting upright with no movement",
-        "a person facing forward doing nothing"
+        "a student sitting at a desk looking forward and listening in a classroom",
+        "a student sitting upright at a desk paying attention",
+        "a person sitting still at a classroom desk facing forward"
     ]
 }
 
@@ -123,7 +127,14 @@ ordered_classes = []
 CLIP_CLASSES = []
 registration_complete = False
 next_student_id = 1
-MAX_ALLOWED_STUDENTS = None    # Set after registration; caps total student IDs issued
+
+# ---- PERMANENT STUDENT REGISTRY ----
+# Maps student_id (int) -> dict with:
+#   'gallery': list of CLIP embeddings (up to GALLERY_SIZE, from different frames/angles)
+#   'face_img': reference face image
+# This registry persists for the ENTIRE video — entries are NEVER deleted.
+student_registry = {}
+GALLERY_SIZE = 10  # Max embeddings stored per student for gallery-based matching
 
 # Thread lock for JSON updates
 json_lock = threading.Lock()
@@ -195,9 +206,12 @@ class Track:
         self.confirmed = False
         self.face_img = None
         
-        # Appearance embedding for re-identification
+        # Appearance embedding for re-identification (latest single embedding)
         self.appearance_embedding = None
         self.last_embedding_frame = -999
+        
+        # Local gallery for this track instance (synced to student_registry)
+        self.embedding_gallery = []
         
         self.emotion_history = deque(maxlen=FRAME_SMOOTHING)
         self.action_history = deque(maxlen=FRAME_SMOOTHING)
@@ -205,8 +219,9 @@ class Track:
         self.current_action = "neutral"
     
     def predict(self):
-        # Suppress velocity BEFORE prediction since students are stationary
-        self.kf.x[4:] = 0.0
+        # Allow velocity — students may move (walk, shift seats)
+        # Dampen velocity to avoid runaway drift
+        self.kf.x[4:] *= 0.5
         self.kf.predict()
         self.bbox = z_to_bbox(self.kf.x[:4])
         self.misses += 1
@@ -242,6 +257,10 @@ class Track:
         return self.hits >= MIN_HITS_TO_CONFIRM
     
     def is_dead(self):
+        # Confirmed students with IDs are kept alive much longer (30s) so they
+        # can be re-matched if the detector picks them up again.
+        if self.confirmed and self.student_id is not None:
+            return self.misses > MAX_MISSING_FRAMES_CONFIRMED
         return self.misses > (MAX_MISSING_FRAMES if self.confirmed else MAX_MISSING_FRAMES // 3)
     
     def get_center(self):
@@ -289,30 +308,38 @@ def strict_nms(boxes, threshold=NMS_IOU_THRESHOLD):
     return [boxes[i] for i in keep]
 
 def extract_face(frame, bbox):
-    """Extract upper portion (head) of detection"""
+    """Extract upper portion (head) of detection — generous crop to capture face"""
     x1, y1, x2, y2 = map(int, bbox)
     h, w = frame.shape[:2]
     
-    head_h = (y2 - y1) // 3
+    # Use 40% of body height (instead of 33%) + 30px padding for better face capture
+    head_h = int((y2 - y1) * 0.40)
     
-    x1 = max(0, x1)
+    x1 = max(0, x1 - 10)  # Small horizontal padding
     y1 = max(0, y1)
-    x2 = min(w, x2)
-    y2 = min(h, y1 + head_h + 20)
+    x2 = min(w, x2 + 10)
+    y2 = min(h, y1 + head_h + 30)
     
     if x2 > x1 and y2 > y1:
         return frame[y1:y2, x1:x2].copy()
     return None
 
 def extract_body(frame, bbox):
-    """Extract full body crop for action classification"""
+    """Extract full body crop with 15% padding for action classification.
+    Padding gives CLIP spatial context (desk, phone, notebook)."""
     x1, y1, x2, y2 = map(int, bbox)
     h, w = frame.shape[:2]
     
-    x1 = max(0, x1)
-    y1 = max(0, y1)
-    x2 = min(w, x2)
-    y2 = min(h, y2)
+    # Add 15% padding around the body
+    bw = x2 - x1
+    bh = y2 - y1
+    pad_x = int(bw * 0.15)
+    pad_y = int(bh * 0.15)
+    
+    x1 = max(0, x1 - pad_x)
+    y1 = max(0, y1 - pad_y)
+    x2 = min(w, x2 + pad_x)
+    y2 = min(h, y2 + pad_y)
     
     if x2 > x1 and y2 > y1:
         return frame[y1:y2, x1:x2].copy()
@@ -333,6 +360,32 @@ def compute_appearance_embedding(crop):
     except:
         return None
 
+def update_student_gallery(student_id, embedding):
+    """Add an embedding to the student's permanent gallery in the registry."""
+    global student_registry
+    if student_id is None or embedding is None:
+        return
+    if student_id not in student_registry:
+        student_registry[student_id] = {'gallery': [], 'face_img': None}
+    gallery = student_registry[student_id]['gallery']
+    if len(gallery) < GALLERY_SIZE:
+        gallery.append(embedding)
+    else:
+        # Replace the oldest embedding (FIFO)
+        gallery.pop(0)
+        gallery.append(embedding)
+
+def gallery_similarity(det_embedding, student_id):
+    """Compute max cosine similarity between a detection embedding and a student's
+    entire gallery. Returns the highest similarity across all stored embeddings."""
+    if student_id not in student_registry:
+        return -1.0
+    gallery = student_registry[student_id]['gallery']
+    if not gallery:
+        return -1.0
+    max_sim = max(float(np.dot(det_embedding, g)) for g in gallery)
+    return max_sim
+
 # ==================== FRAME NORMALIZATION ====================
 def normalize_frame(frame):
     """Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) to the luminance
@@ -346,63 +399,147 @@ def normalize_frame(frame):
     return cv2.cvtColor(cv2.merge([l_eq, a_ch, b_ch]), cv2.COLOR_LAB2BGR)
 
 # ==================== RE-IDENTIFICATION ====================
-def try_reidentify(detection, frame, frame_id):
-    """Try to match a new detection to a dead (previously removed) track using
-    APPEARANCE-ONLY matching (CLIP body embedding cosine similarity).
+def try_reidentify(detection, frame, frame_id, active_tracks=None, matched_trks=None):
+    """Try to match a new detection to a known student using GALLERY-BASED
+    appearance matching. Searches:
+      1. Dead tracks (graveyard) — students who left the frame
+      2. Active tracks with misses > 0 — students not matched this frame
+      3. The permanent student registry — ALL ever-seen students
 
-    No spatial gate is applied — a student may return and sit on a completely
-    different seat, so location is irrelevant for re-identification.
+    Uses gallery_similarity (max across all stored embeddings per student)
+    for robust matching across lighting, posture, and angle changes.
+
+    No spatial gate — a student may return to any seat.
     """
-    global dead_tracks
-
-    if not dead_tracks:
-        return None
+    global dead_tracks, student_registry
 
     # Compute appearance embedding for the new detection
     body_crop = extract_body(frame, detection)
     det_embedding = compute_appearance_embedding(body_crop)
 
-    # If no embedding available, skip re-id (can't match without appearance)
+    # If no embedding available, skip re-id
     if det_embedding is None:
         return None
 
-    best_match = None
+    best_student_id = None
+    best_match_source = None  # "dead", "active", or "registry"
+    best_match_idx = None
     best_score = -1
 
+    # Collect student IDs that are currently active and matched (don't steal these)
+    active_matched_sids = set()
+    if active_tracks and matched_trks:
+        for j in matched_trks:
+            if active_tracks[j].student_id is not None:
+                active_matched_sids.add(active_tracks[j].student_id)
+
+    # --- Search Dead Tracks (gallery-based) ---
     for i, dead in enumerate(dead_tracks):
-        # Skip if too old
-        if (frame_id - dead.last_seen) > REID_MAX_DEAD_AGE:
+        if dead.student_id is None:
             continue
+        if dead.student_id in active_matched_sids:
+            continue  # This student is already matched by an active track
 
-        # Skip if dead track has no embedding to compare against
-        if dead.appearance_embedding is None:
+        sim = gallery_similarity(det_embedding, dead.student_id)
+        # Also check single embedding as fallback
+        if dead.appearance_embedding is not None:
+            single_sim = float(np.dot(det_embedding, dead.appearance_embedding))
+            sim = max(sim, single_sim)
+
+        if sim >= REID_APPEARANCE_THRESHOLD and sim > best_score:
+            best_score = sim
+            best_student_id = dead.student_id
+            best_match_idx = i
+            best_match_source = "dead"
+
+    # --- Search Active Unmatched Tracks (gallery-based) ---
+    if active_tracks:
+        for i, track in enumerate(active_tracks):
+            if matched_trks and i in matched_trks:
+                continue  # Already matched this frame
+            if track.misses == 0 or track.student_id is None:
+                continue
+            if track.student_id in active_matched_sids:
+                continue
+
+            sim = gallery_similarity(det_embedding, track.student_id)
+            if track.appearance_embedding is not None:
+                single_sim = float(np.dot(det_embedding, track.appearance_embedding))
+                sim = max(sim, single_sim)
+
+            if sim >= REID_APPEARANCE_THRESHOLD and sim > best_score:
+                best_score = sim
+                best_student_id = track.student_id
+                best_match_idx = i
+                best_match_source = "active"
+
+    # --- Search permanent registry for any student not currently tracked ---
+    active_sids = set()
+    if active_tracks:
+        for t in active_tracks:
+            if t.student_id is not None:
+                active_sids.add(t.student_id)
+    dead_sids = set(d.student_id for d in dead_tracks if d.student_id is not None)
+    checked_sids = active_sids | dead_sids  # already checked above
+
+    for sid, info in student_registry.items():
+        if sid in checked_sids or sid in active_matched_sids:
             continue
-
-        # Pure appearance similarity (cosine distance, embeddings are L2-normalized)
-        similarity = float(np.dot(det_embedding, dead.appearance_embedding))
-        if similarity < REID_APPEARANCE_THRESHOLD:
+        if not info['gallery']:
             continue
+        sim = gallery_similarity(det_embedding, sid)
+        if sim >= REID_APPEARANCE_THRESHOLD and sim > best_score:
+            best_score = sim
+            best_student_id = sid
+            best_match_source = "registry"
 
-        if similarity > best_score:
-            best_score = similarity
-            best_match = i
-
-    if best_match is not None:
-        old_track = dead_tracks.pop(best_match)
-
+    # --- Apply match ---
+    if best_match_source == "dead":
+        old_track = dead_tracks.pop(best_match_idx)
         new_track = Track(detection, frame_id)
-        new_track.student_id = old_track.student_id
+        new_track.student_id = best_student_id
         new_track.confirmed = True
         new_track.hits = MIN_HITS_TO_CONFIRM
-        new_track.appearance_embedding = old_track.appearance_embedding
         new_track.face_img = old_track.face_img
-
-        # Refresh embedding with current detection
         new_track.appearance_embedding = det_embedding
         new_track.last_embedding_frame = frame_id
+        update_student_gallery(best_student_id, det_embedding)
 
-        print(f"  \u21a9 Student {old_track.student_id} RE-IDENTIFIED "
-              f"(similarity={best_score:.3f})")
+        print(f"  ↩ Student {best_student_id} RE-IDENTIFIED from GRAVEYARD "
+              f"(gallery_sim={best_score:.3f})")
+        return new_track
+
+    elif best_match_source == "active":
+        track = active_tracks[best_match_idx]
+        z = bbox_to_z(np.array(detection, dtype=np.float32))
+        track.kf.x[:4] = z.reshape(-1, 1)
+        track.kf.x[4:] = 0.0
+        track.bbox = np.array(detection, dtype=np.float32)
+        track.smooth_bbox = track.bbox.copy()
+        track.last_seen = frame_id
+        track.hits += 1
+        track.misses = 0
+        track.appearance_embedding = det_embedding
+        track.last_embedding_frame = frame_id
+        update_student_gallery(best_student_id, det_embedding)
+
+        print(f"  ↩ Student {best_student_id} RELOCATED in-frame "
+              f"(gallery_sim={best_score:.3f})")
+        return track
+
+    elif best_match_source == "registry":
+        # Student found in permanent registry but has no active/dead track
+        new_track = Track(detection, frame_id)
+        new_track.student_id = best_student_id
+        new_track.confirmed = True
+        new_track.hits = MIN_HITS_TO_CONFIRM
+        new_track.face_img = student_registry[best_student_id].get('face_img')
+        new_track.appearance_embedding = det_embedding
+        new_track.last_embedding_frame = frame_id
+        update_student_gallery(best_student_id, det_embedding)
+
+        print(f"  ↩ Student {best_student_id} RE-IDENTIFIED from REGISTRY "
+              f"(gallery_sim={best_score:.3f})")
         return new_track
 
     return None
@@ -513,7 +650,12 @@ def batch_predict_emotions(crops):
             
             for idx, pred in zip(valid_indices, preds):
                 best_idx = int(np.argmax(pred))
-                results[idx] = ordered_classes[best_idx]
+                best_conf = float(pred[best_idx])
+                # Confidence gate: only trust prediction if model is ≥40% sure
+                if best_conf < 0.40:
+                    results[idx] = "neutral"
+                else:
+                    results[idx] = ordered_classes[best_idx]
         except:
             for idx in valid_indices:
                 results[idx] = "neutral"
@@ -556,7 +698,8 @@ def batch_predict_actions(crops):
                     sorted_scores = torch.sort(sim, descending=True).values
                     second_best = sorted_scores[1].item() if len(sorted_scores) > 1 else 0
                     
-                    if best_score < 0.18 or (best_score - second_best) < 0.015:
+                    # Lowered thresholds: accept action if CLIP is reasonably confident
+                    if best_score < 0.12 or (best_score - second_best) < 0.005:
                         results[idx] = "neutral"
                     else:
                         results[idx] = CLIP_CLASSES[best_idx]
@@ -601,24 +744,37 @@ def merge_overlapping_tracks():
 
 def assign_ids():
     """Assign student IDs to confirmed tracks.
-    Respects the global MAX_ALLOWED_STUDENTS cap to prevent runaway ID inflation."""
-    global next_student_id, json_data
+    
+    AFTER registration, NO new student IDs are ever created. Unmatched
+    detections that couldn't be re-identified are simply ignored — they
+    are either ghosts (chairs, bags) or students who will be matched
+    via gallery re-ID on a subsequent frame.
+    """
+    global next_student_id, json_data, student_registry
     
     for track in tracks:
         if track.is_confirmed() and track.student_id is None:
-            # Global cap: only register new students up to MAX_ALLOWED_STUDENTS
-            if MAX_ALLOWED_STUDENTS is not None and next_student_id > MAX_ALLOWED_STUDENTS:
-                print(f"  ⚠ Student cap reached ({MAX_ALLOWED_STUDENTS}), skipping new track")
+            # BLOCK new IDs after registration — only re-ID can assign IDs
+            if registration_complete:
+                # Don't assign a new ID. This track will either:
+                # 1. Be matched via re-ID on a future frame
+                # 2. Eventually die as unconfirmed/unassigned (ghost)
                 continue
             
             track.student_id = next_student_id
             track.confirmed = True
             
+            # Register in permanent student registry
+            if next_student_id not in student_registry:
+                student_registry[next_student_id] = {'gallery': [], 'face_img': track.face_img}
+            if track.appearance_embedding is not None:
+                update_student_gallery(next_student_id, track.appearance_embedding)
+            
             with json_lock:
                 if str(next_student_id) not in json_data["students"]:
                     json_data["students"][str(next_student_id)] = {"frames": {}}
             
-            print(f"  \u2605 Student {next_student_id} registered")
+            print(f"  ★ Student {next_student_id} registered")
             next_student_id += 1
 
 def cluster_detections_by_center(detections, dist_threshold):
@@ -699,26 +855,69 @@ def registration_phase(cap):
     
     print(f"   Found {len(tracks)} student positions\n")
     
+    # --- Compute initial CLIP embeddings for each student's gallery ---
+    # Read a fresh frame to extract body crops and compute CLIP embeddings.
+    # This is critical: without initial embeddings, re-ID cannot work on early frames.
+    cap.set(cv2.CAP_PROP_POS_FRAMES, REGISTRATION_FRAMES // 2)  # mid-registration frame
+    ret_emb, emb_frame = cap.read()
+    if ret_emb:
+        norm_emb_frame = normalize_frame(emb_frame)
+    else:
+        norm_emb_frame = None
+    
     for track in tracks:
         track.student_id = next_student_id
         track.confirmed = True
         json_data["students"][str(next_student_id)] = {"frames": {}}
-        print(f"  \u2605 Student {track.student_id} registered")
+        
+        # Compute initial CLIP embedding and populate gallery
+        student_registry[next_student_id] = {'gallery': [], 'face_img': track.face_img}
+        if norm_emb_frame is not None:
+            body_crop = extract_body(norm_emb_frame, track.bbox)
+            emb = compute_appearance_embedding(body_crop)
+            if emb is not None:
+                track.appearance_embedding = emb
+                track.last_embedding_frame = 0
+                update_student_gallery(next_student_id, emb)
+        
+        print(f"  ★ Student {track.student_id} registered "
+              f"(gallery: {len(student_registry[next_student_id]['gallery'])} embeddings)")
         next_student_id += 1
     
-    # Set global cap: registered students + 2 buffer for genuine latecomers
-    MAX_ALLOWED_STUDENTS = (next_student_id - 1) + 2
-    print(f"   Student count cap set to: {MAX_ALLOWED_STUDENTS}\n")
+    # Read a few more frames spread across registration to add gallery diversity
+    sample_frames = [0, REGISTRATION_FRAMES // 4, REGISTRATION_FRAMES * 3 // 4,
+                     REGISTRATION_FRAMES - 1]
+    for sf in sample_frames:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, sf)
+        ret_sf, sf_frame = cap.read()
+        if not ret_sf:
+            continue
+        norm_sf = normalize_frame(sf_frame)
+        for track in tracks:
+            body_crop = extract_body(norm_sf, track.bbox)
+            emb = compute_appearance_embedding(body_crop)
+            if emb is not None:
+                update_student_gallery(track.student_id, emb)
+    
+    total_gallery = sum(len(student_registry[sid]['gallery']) for sid in student_registry)
+    print(f"   Registered {len(tracks)} students in permanent registry")
+    print(f"   Total gallery embeddings: {total_gallery}\n")
     
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
     registration_complete = True
 
 def process_frame_optimized(frame, frame_id):
-    """Process frame: normalize for lighting, track, re-id, batch-classify."""
-    global tracks, dead_tracks, json_data
+    """Process frame: normalize for lighting, track, re-id, batch-classify.
+    
+    4-stage matching pipeline:
+      Stage 1: IoU-based Hungarian assignment
+      Stage 2: Center-distance based matching
+      Stage 3: Gallery-based appearance re-identification
+      Stage 4: New track creation (last resort, only if no registry match)
+    """
+    global tracks, dead_tracks, json_data, student_registry
 
     # Normalize a copy for all AI processing (YOLO, emotion, action, Re-ID).
-    # The original unreformed frame is written to the output video so it looks natural.
     norm_frame = normalize_frame(frame)
 
     detections = detect_persons(norm_frame)
@@ -733,6 +932,7 @@ def process_frame_optimized(frame, frame_id):
     matched_dets = set()
     matched_trks = set()
     
+    # ==================== STAGE 1: IoU-based Hungarian matching ====================
     if len(tracks) > 0 and len(detections) > 0:
         cost = np.zeros((len(detections), len(tracks)))
         
@@ -750,38 +950,48 @@ def process_frame_optimized(frame, frame_id):
                 matched_dets.add(i)
                 matched_trks.add(j)
 
-        for i, det in enumerate(detections):
-            if i in matched_dets:
-                continue
-
-            best_track = None
-            best_iou = OVERLAP_MERGE_THRESHOLD
-
-            for j, track in enumerate(tracks):
-                if j in matched_trks:
-                    continue
-                iou = compute_iou(det, track.bbox)
-                if iou > best_iou:
-                    best_iou = iou
-                    best_track = j
-
-            if best_track is not None:
-                face_img = extract_face(norm_frame, det)
-                tracks[best_track].update(det, frame_id, face_img)
-                matched_dets.add(i)
-                matched_trks.add(best_track)
+    # ==================== STAGE 2: Center-distance matching ====================
+    # For unmatched detections and tracks, match by proximity of bounding box centers.
+    # This handles students who shift position, lean, or move slightly between frames.
+    unmatched_det_indices = [i for i in range(len(detections)) if i not in matched_dets]
+    unmatched_trk_indices = [j for j in range(len(tracks)) if j not in matched_trks]
     
-    # --- RE-IDENTIFICATION: try to match unmatched detections to dead tracks ---
+    if unmatched_det_indices and unmatched_trk_indices:
+        dist_cost = np.full((len(unmatched_det_indices), len(unmatched_trk_indices)), 1e6)
+        for di, i in enumerate(unmatched_det_indices):
+            det_center = np.array([(detections[i][0]+detections[i][2])/2, (detections[i][1]+detections[i][3])/2])
+            for dj, j in enumerate(unmatched_trk_indices):
+                trk_center = tracks[j].get_center()
+                dist_cost[di, dj] = np.linalg.norm(det_center - trk_center)
+        
+        d_rows, d_cols = linear_sum_assignment(dist_cost)
+        for di, dj in zip(d_rows, d_cols):
+            if dist_cost[di, dj] < CENTER_DIST_MATCH_THRESHOLD:
+                i = unmatched_det_indices[di]
+                j = unmatched_trk_indices[dj]
+                face_img = extract_face(norm_frame, detections[i])
+                tracks[j].update(detections[i], frame_id, face_img)
+                matched_dets.add(i)
+                matched_trks.add(j)
+    
+    # ==================== STAGE 3: Gallery-based Appearance Re-ID ====================
+    # For still-unmatched detections, try to match against the PERMANENT student
+    # registry (gallery of embeddings), dead tracks, and active missing tracks.
     for i, det in enumerate(detections):
         if i in matched_dets:
             continue
 
-        resurrected = try_reidentify(det, norm_frame, frame_id)
+        resurrected = try_reidentify(det, norm_frame, frame_id,
+                                     active_tracks=tracks,
+                                     matched_trks=matched_trks)
         if resurrected is not None:
-            tracks.append(resurrected)
+            if resurrected not in tracks:
+                tracks.append(resurrected)
             matched_dets.add(i)
         else:
-            # Spatial proximity guard: skip if a confirmed track is already nearby
+            # ==================== STAGE 4: New track (last resort) ====================
+            # Only create a new track if no existing student matches AND no
+            # confirmed track is nearby (spatial proximity guard).
             det_center = np.array([(det[0] + det[2]) / 2.0, (det[1] + det[3]) / 2.0])
             too_close = False
             for track in tracks:
@@ -814,13 +1024,17 @@ def process_frame_optimized(frame, frame_id):
     assign_ids()
     
     # --- Update appearance embeddings periodically for confirmed tracks ---
+    # Store in both the track's single embedding AND the permanent gallery.
     for track in tracks:
-        if track.confirmed and (frame_id - track.last_embedding_frame) >= APPEARANCE_UPDATE_INTERVAL:
+        if track.confirmed and track.student_id is not None and \
+           (frame_id - track.last_embedding_frame) >= APPEARANCE_UPDATE_INTERVAL:
             body_crop = extract_body(norm_frame, track.smooth_bbox)
             emb = compute_appearance_embedding(body_crop)
             if emb is not None:
                 track.appearance_embedding = emb
                 track.last_embedding_frame = frame_id
+                # Add to permanent student gallery
+                update_student_gallery(track.student_id, emb)
     
     # Collect all confirmed tracks that were recently seen (e.g. <= 15 frames missed)
     # This prevents drawing boxes for students completely out of view
@@ -995,7 +1209,7 @@ def main():
     video_path = args.video
 
     # Derive output paths from the input video filename
-    video_stem = os.path.splitext(os.path.basename(video_path))[1]
+    video_stem = os.path.splitext(os.path.basename(video_path))[0]  # [0] = stem, not [1] = extension
     output_video_path  = os.path.join(BASE_DIR, "outputs", f"output_{video_stem}.mp4")
     output_json_path   = os.path.join(BASE_DIR, "outputs", f"output_{video_stem}.json")
     output_summary_path = os.path.join(BASE_DIR, "outputs", f"output_{video_stem}_summary.txt")
@@ -1029,7 +1243,7 @@ def main():
 
     json_data["video_info"]["total_students"] = next_student_id - 1
 
-    out = cv2.VideoWriter(output_video_path, cv2.VideoWriter_fourcc(*"avc1"), fps, (w, h))
+    out = cv2.VideoWriter(output_video_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
     
     start = time.time()
     frame_id = 0
