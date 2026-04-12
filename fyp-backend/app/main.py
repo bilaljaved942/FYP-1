@@ -5,6 +5,9 @@ import sys
 import uuid
 from pathlib import Path
 
+import cv2
+import numpy as np
+
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
@@ -39,9 +42,38 @@ PROJECT_ROOT = BACKEND_DIR.parent                             # FYP-1/
 UPLOAD_DIR = BACKEND_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-AI_SCRIPT = PROJECT_ROOT / "New_Scripts" / "classroom_engagement.py"
+# ── AI Script Routing ────────────────────────────────────────────
+# Two scripts: one optimised for normal light, one for dim classrooms.
+# The backend samples the first few frames and routes automatically.
+SCRIPT_NORMAL    = PROJECT_ROOT / "New_Scripts" / "classroom_engagement.py"
+SCRIPT_DIM       = PROJECT_ROOT / "New_Scripts" / "classroom_engagement_dim.py"
+BRIGHTNESS_THRESHOLD = 75          # 0-255 grayscale mean; below this → dim script
+
 EMOTION_MODEL = PROJECT_ROOT / "best_cnn_v2_emotions.keras"
 CLASS_MAP = PROJECT_ROOT / "class_map.json"
+
+
+def detect_brightness(video_path: str, sample_frames: int = 5) -> float:
+    """
+    Quickly estimate the average brightness of a video by sampling
+    the first `sample_frames` frames and taking the mean grayscale value.
+    Returns a float in [0, 255]. Falls back to 255 (assume bright) on error.
+    """
+    try:
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return 255.0
+        brightness_values = []
+        for _ in range(sample_frames):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            brightness_values.append(float(np.mean(gray)))
+        cap.release()
+        return float(np.mean(brightness_values)) if brightness_values else 255.0
+    except Exception:
+        return 255.0   # Safe fallback: use normal script
 
 
 @app.on_event("startup")
@@ -71,22 +103,28 @@ async def process_video(job_id: uuid.UUID, file_path: str) -> None:
     faces_dir.mkdir(exist_ok=True)
 
     try:
+        # ── Brightness-based script routing ──────────────────────
+        avg_brightness = detect_brightness(file_path)
+        if avg_brightness < BRIGHTNESS_THRESHOLD:
+            chosen_script = SCRIPT_DIM
+            script_label  = "DIM-LIGHT"
+        else:
+            chosen_script = SCRIPT_NORMAL
+            script_label  = "NORMAL"
+        logger.info(
+            f"[Job {job_str}] Brightness={avg_brightness:.1f} (threshold={BRIGHTNESS_THRESHOLD}) "
+            f"→ Using {script_label} script: {chosen_script.name}"
+        )
+
         # ── Launch AI as subprocess ───────────────────────────────
-        # Use sys.executable when uvicorn is running inside an activated
-        # venv (sys.prefix != sys.base_prefix). This is more reliable
-        # than pointing to venv/Scripts/python.exe directly, because
-        # the venv directory may have been moved/copied and its internal
-        # pyvenv.cfg / pip paths could be stale.
         if sys.prefix != sys.base_prefix:
-            # We are inside an activated venv — sys.executable is correct
             python_exe = sys.executable
         else:
-            # Fallback: try the local venv
             venv_python = BACKEND_DIR / "venv" / "Scripts" / "python.exe"
             python_exe = str(venv_python) if venv_python.exists() else sys.executable
         cmd = [
             python_exe,
-            str(AI_SCRIPT),
+            str(chosen_script),
             "--video", str(file_path),
             "--output-json", str(output_json),
             "--output-video", str(output_video),
