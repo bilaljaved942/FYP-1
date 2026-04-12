@@ -1,0 +1,89 @@
+# ============================================================
+# Python / Backend
+# ============================================================
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# PyTest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ============================================================
+# AI Model Weights (large files — download separately)
+# ============================================================
+*.pt
+*.pth
+*.onnx
+*.keras
+*.h5
+
+# ============================================================
+# Project-specific data directories
+# ============================================================
+
+# Uploaded videos and AI output files
+fyp-backend/uploads/
+
+# Output videos and raw JSON results
+outputs/
+
+# Face crop images
+*_faces/
+
+# ============================================================
+# Frontend / Node.js
+# ============================================================
+
+node_modules/
+.npm
+*.tsbuildinfo
+
+# Vite build output
+fyp-frontend/dist/
+fyp-frontend/.vite/
+
+# ============================================================
+# Environment variables (never commit secrets)
+# ============================================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ============================================================
+# IDEs & Editors
+# ============================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ============================================================
+# Logs
+# ============================================================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

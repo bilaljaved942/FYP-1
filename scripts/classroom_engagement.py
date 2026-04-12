@@ -27,14 +27,18 @@ import threading
 warnings.filterwarnings('ignore')
 
 # ==================== CONFIGURATION ====================
-# Paths - UPDATE THESE
-VIDEO_PATH = r"E:\FYP\videos\final_video.mp4"
-OUTPUT_VIDEO_PATH = r"E:\FYP\videos\output_engagement.mp4"
-OUTPUT_JSON_PATH = r"E:\FYP\videos\output_engagement.json"
-OUTPUT_SUMMARY_PATH = r"E:\FYP\videos\output_engagement_summary.txt"
-FACES_DIR = r"E:\FYP\faces_engagement"
-EMOTION_MODEL_PATH = r"E:\FYP\best_cnn_v2_emotions.keras"
-CLASS_MAP_PATH = r"E:\FYP\class_map.json"
+# Paths — relative to this script's location (scripts/ → project root)
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.join(_SCRIPT_DIR, "..")
+_OUTPUTS_DIR = os.path.join(_PROJECT_ROOT, "outputs")
+
+VIDEO_PATH = os.path.join(_OUTPUTS_DIR, "final_video.mp4")
+OUTPUT_VIDEO_PATH = os.path.join(_OUTPUTS_DIR, "output_engagement.mp4")
+OUTPUT_JSON_PATH = os.path.join(_OUTPUTS_DIR, "output_engagement.json")
+OUTPUT_SUMMARY_PATH = os.path.join(_OUTPUTS_DIR, "output_engagement_summary.txt")
+FACES_DIR = os.path.join(_OUTPUTS_DIR, "faces")
+EMOTION_MODEL_PATH = os.path.join(_PROJECT_ROOT, "best_cnn_v2_emotions.keras")
+CLASS_MAP_PATH = os.path.join(_PROJECT_ROOT, "class_map.json")
 
 # Device
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -306,38 +310,38 @@ def init_models():
     print("CLASSROOM ENGAGEMENT ANALYSIS SYSTEM (OPTIMIZED)")
     print("=" * 60 + "\n")
     
-    print(f"⚡ Performance settings:")
+    print(f"[INFO] Performance settings:")
     print(f"   - Process every {PROCESS_EVERY_N_FRAMES} frame(s)")
     print(f"   - Worker threads: {NUM_WORKERS}")
     print(f"   - Batch size: {BATCH_SIZE}")
     print(f"   - Device: {DEVICE}\n")
     
     # Load YOLO
-    print("🔍 Loading YOLOv8 model...")
+    print("[LOAD] Loading YOLOv8 model...")
     from ultralytics import YOLO
     yolo_model = YOLO("yolov8n.pt")
-    print("   ✅ YOLOv8 loaded")
+    print("   [OK] YOLOv8 loaded")
     
     # Load Emotion Model
-    print("💬 Loading Emotion Model...")
+    print("[LOAD] Loading Emotion Model...")
     emotion_model = load_model(EMOTION_MODEL_PATH, compile=False)
-    print("   ✅ Emotion model loaded")
+    print("   [OK] Emotion model loaded")
     
     # Load class map
-    print("📋 Loading class map...")
+    print("[LOAD] Loading class map...")
     with open(CLASS_MAP_PATH, "r") as f:
         class_map = json.load(f)
     ordered_classes = [c for c, idx in sorted(class_map.items(), key=lambda x: x[1])]
-    print(f"   ✅ Emotions: {ordered_classes}")
+    print(f"   [OK] Emotions: {ordered_classes}")
     
     # Load CLIP
-    print("🧠 Loading CLIP model...")
+    print("[LOAD] Loading CLIP model...")
     clip_model, clip_preprocess = clip.load("ViT-B/32", device=DEVICE, jit=False)
     clip_model.eval()
-    print("   ✅ CLIP loaded")
+    print("   [OK] CLIP loaded")
     
     # Create CLIP text embeddings
-    print("📌 Creating CLIP text embeddings...")
+    print("[LOAD] Creating CLIP text embeddings...")
     embeddings = []
     for label, prompts in CLIP_LABELS.items():
         tokens = clip.tokenize(prompts).to(DEVICE)
@@ -348,9 +352,9 @@ def init_models():
         embeddings.append(emb)
     text_embeddings = torch.cat(embeddings, dim=0)
     CLIP_CLASSES = list(CLIP_LABELS.keys())
-    print(f"   ✅ Actions: {CLIP_CLASSES}")
+    print(f"   [OK] Actions: {CLIP_CLASSES}")
     
-    print("\n✅ All models loaded!\n")
+    print("\n[OK] All models loaded!\n")
 
 # ==================== DETECTION ====================
 def detect_persons(frame, conf=None):
@@ -507,14 +511,14 @@ def assign_ids():
                 except:
                     pass
             
-            print(f"  ★ Student {next_student_id} registered")
+            print(f"  [*] Student {next_student_id} registered")
             next_student_id += 1
 
 def registration_phase(cap):
     """Scan initial frames to find all students"""
     global tracks, registration_complete, next_student_id
     
-    print(f"📝 Registration phase: scanning {REGISTRATION_FRAMES} frames...")
+    print(f"[REG] Registration phase: scanning {REGISTRATION_FRAMES} frames...")
     
     all_detections = []
     
@@ -547,7 +551,7 @@ def registration_phase(cap):
         track.student_id = next_student_id
         track.confirmed = True
         json_data["students"][str(next_student_id)] = {"frames": {}}
-        print(f"  ★ Student {track.student_id} registered")
+        print(f"  [*] Student {track.student_id} registered")
         next_student_id += 1
     
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -728,7 +732,7 @@ def main():
     init_models()
     
     if not os.path.exists(VIDEO_PATH):
-        print(f"❌ ERROR: Video not found: {VIDEO_PATH}")
+        print(f"[ERROR] Video not found: {VIDEO_PATH}")
         return
     
     cap = cv2.VideoCapture(VIDEO_PATH)
@@ -737,9 +741,9 @@ def main():
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
-    print(f"📹 Video: {w}x{h} @ {fps:.1f}fps, {total} frames")
-    print(f"📁 Output video: {OUTPUT_VIDEO_PATH}")
-    print(f"📁 Output JSON: {OUTPUT_JSON_PATH}\n")
+    print(f"[VIDEO] {w}x{h} @ {fps:.1f}fps, {total} frames")
+    print(f"[PATH] Output video: {OUTPUT_VIDEO_PATH}")
+    print(f"[PATH] Output JSON: {OUTPUT_JSON_PATH}\n")
     
     json_data["video_info"] = {
         "fps": fps,
@@ -758,7 +762,7 @@ def main():
     frame_id = 0
     last_assignments = []
     
-    print("🎥 Processing frames (OPTIMIZED)...\n")
+    print("[RUN] Processing frames (OPTIMIZED)...\n")
     try:
         while True:
             ret, frame = cap.read()
@@ -796,26 +800,56 @@ def main():
     
     elapsed = time.time() - start
     
-    print(f"\n💾 Saving JSON to: {OUTPUT_JSON_PATH}")
+    print(f"\n[SAVE] Saving JSON to: {OUTPUT_JSON_PATH}")
     with open(OUTPUT_JSON_PATH, "w") as f:
         json.dump(json_data, f, indent=2)
     
     summary = generate_summary()
-    print(f"💾 Saving summary to: {OUTPUT_SUMMARY_PATH}")
+    print(f"[SAVE] Saving summary to: {OUTPUT_SUMMARY_PATH}")
     with open(OUTPUT_SUMMARY_PATH, "w") as f:
         f.write(summary)
     
     print("\n" + summary)
     
     print("\n" + "=" * 60)
-    print("✅ PROCESSING COMPLETE!")
+    print("[DONE] PROCESSING COMPLETE!")
     print("=" * 60)
-    print(f"\n⏱️  Time: {elapsed:.1f}s ({total/elapsed:.1f} fps)")
-    print(f"👥 Total students: {next_student_id - 1}")
-    print(f"\n📁 Output video: {OUTPUT_VIDEO_PATH}")
-    print(f"📁 Output JSON: {OUTPUT_JSON_PATH}")
-    print(f"📁 Summary: {OUTPUT_SUMMARY_PATH}")
-    print(f"📁 Faces: {FACES_DIR}/")
+    print(f"\n[TIME] {elapsed:.1f}s ({total/elapsed:.1f} fps)")
+    print(f"[INFO] Total students: {next_student_id - 1}")
+    print(f"\n[PATH] Output video: {OUTPUT_VIDEO_PATH}")
+    print(f"[PATH] Output JSON: {OUTPUT_JSON_PATH}")
+    print(f"[PATH] Summary: {OUTPUT_SUMMARY_PATH}")
+    print(f"[PATH] Faces: {FACES_DIR}/")
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Classroom Engagement Analysis")
+    parser.add_argument("--video", default=None, help="Input video path")
+    parser.add_argument("--output-json", default=None, help="Output JSON path")
+    parser.add_argument("--output-video", default=None, help="Output annotated video path")
+    parser.add_argument("--output-summary", default=None, help="Output summary text path")
+    parser.add_argument("--faces-dir", default=None, help="Directory to save face crops")
+    parser.add_argument("--emotion-model", default=None, help="Path to emotion .keras model")
+    parser.add_argument("--class-map", default=None, help="Path to class_map.json")
+    args = parser.parse_args()
+
+    # Override globals with CLI arguments if provided
+    if args.video:
+        VIDEO_PATH = args.video
+    if args.output_json:
+        OUTPUT_JSON_PATH = args.output_json
+    if args.output_video:
+        OUTPUT_VIDEO_PATH = args.output_video
+    if args.output_summary:
+        OUTPUT_SUMMARY_PATH = args.output_summary
+    if args.faces_dir:
+        FACES_DIR = args.faces_dir
+        os.makedirs(FACES_DIR, exist_ok=True)
+    if args.emotion_model:
+        EMOTION_MODEL_PATH = args.emotion_model
+    if args.class_map:
+        CLASS_MAP_PATH = args.class_map
+
     main()
+
