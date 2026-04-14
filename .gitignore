@@ -40,10 +40,12 @@ htmlcov/
 # ============================================================
 
 # Uploaded videos and AI output files
-fyp-backend/uploads/
+backend/uploads/*
+!backend/uploads/.gitkeep
 
 # Output videos and raw JSON results
-outputs/
+ai-pipeline/outputs/*
+!ai-pipeline/outputs/.gitkeep
 
 # Face crop images
 *_faces/
@@ -57,8 +59,8 @@ node_modules/
 *.tsbuildinfo
 
 # Vite build output
-fyp-frontend/dist/
-fyp-frontend/.vite/
+frontend/dist/
+frontend/.vite/
 
 # ============================================================
 # Environment variables (never commit secrets)
@@ -87,3 +89,8 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# ============================================================
+# Archive (backup files — keep in repo but exclude large media)
+# ============================================================
+archive/legacy-frontend/node_modules/
