@@ -34,6 +34,7 @@ class JobResponse(BaseModel):
     video_path: str
     status: JobStatus
     created_at: datetime
+    processing_time: float | None = None
     ai_results: dict[str, Any] | None
 
     class Config:

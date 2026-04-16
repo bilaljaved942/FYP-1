@@ -47,4 +47,5 @@ class AnalysisJob(Base):
         server_default=func.now(),
         nullable=False
     )
+    processing_time: Mapped[float | None] = mapped_column(nullable=True)
     ai_results: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

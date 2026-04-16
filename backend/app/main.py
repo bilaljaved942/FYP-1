@@ -93,6 +93,9 @@ async def process_video(job_id: uuid.UUID, file_path: str) -> None:
       - Global state in the script is isolated per-request.
     """
     from app.database import async_session_maker
+    import time
+    
+    start_time = time.time()
 
     # ── Build per-job output paths ────────────────────────────────
     job_str = str(job_id)
@@ -139,12 +142,21 @@ async def process_video(job_id: uuid.UUID, file_path: str) -> None:
 
         # Run subprocess.run in a thread to avoid blocking the event loop
         # and sidestep Windows SelectorEventLoop limitations.
+        # PYTHONIOENCODING + PYTHONUTF8 force UTF-8 stdout/stderr so that
+        # emoji characters in the AI scripts don't crash with UnicodeEncodeError
+        # on Windows (which defaults subprocess pipes to cp1252).
+        import os as _os
+        subprocess_env = _os.environ.copy()
+        subprocess_env["PYTHONIOENCODING"] = "utf-8"
+        subprocess_env["PYTHONUTF8"] = "1"
+
         completed = await asyncio.to_thread(
             subprocess.run,
             cmd,
             capture_output=True,
             text=True,
             encoding="utf-8",
+            env=subprocess_env,
         )
 
         if completed.returncode != 0:
@@ -169,8 +181,9 @@ async def process_video(job_id: uuid.UUID, file_path: str) -> None:
             if job:
                 job.status = JobStatus.COMPLETED
                 job.ai_results = ai_results
+                job.processing_time = round(time.time() - start_time, 2)
                 await session.commit()
-                logger.info(f"[Job {job_str}] Status → COMPLETED ✅")
+                logger.info(f"[Job {job_str}] Status → COMPLETED ✅ (Time: {job.processing_time}s)")
 
     except Exception as exc:
         logger.exception(f"[Job {job_str}] process_video failed: {exc}")
@@ -184,8 +197,9 @@ async def process_video(job_id: uuid.UUID, file_path: str) -> None:
                 job = result.scalar_one_or_none()
                 if job:
                     job.status = JobStatus.FAILED
+                    job.processing_time = round(time.time() - start_time, 2)
                     await session.commit()
-                    logger.info(f"[Job {job_str}] Status → FAILED ❌")
+                    logger.info(f"[Job {job_str}] Status → FAILED ❌ (Time: {job.processing_time}s)")
         except Exception as db_exc:
             logger.error(f"[Job {job_str}] Could not update DB to FAILED: {db_exc}")
 

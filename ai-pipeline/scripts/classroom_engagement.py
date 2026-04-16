@@ -72,7 +72,7 @@ EMOTION_SMOOTHING = 15
 # Post-processing: minimum fraction of total video frames a student must appear
 # in to be considered real (filters ghost/phantom detections from the output).
 # E.g. 0.05 = student must appear in at least 5% of the video's total frames.
-MIN_FRAMES_FRACTION = 0.05
+MIN_FRAMES_FRACTION = 0.20
 
 # CLIP action prompts
 CLIP_LABELS = {

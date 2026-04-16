@@ -9,7 +9,16 @@ Optimizations:
 4. Frame skipping option for faster processing
 5. Reduced redundant computations
 """
+import sys
 import os
+
+# Force UTF-8 output so emoji characters in print() don't crash on Windows
+# when this script is launched as a subprocess (Windows defaults to cp1252).
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import cv2
 import torch
 import numpy as np
@@ -73,7 +82,7 @@ ACTION_SMOOTHING = 25  # Strengthened for maximum stability in dim light
 # Post-processing: minimum fraction of total video frames a student must appear
 # in to be considered real (filters ghost/phantom detections from the output).
 # E.g. 0.05 = student must appear in at least 5% of the video's total frames.
-MIN_FRAMES_FRACTION = 0.05
+MIN_FRAMES_FRACTION = 0.20
 
 # CLIP action prompts
 CLIP_LABELS = {
@@ -1350,14 +1359,20 @@ def main():
         default=os.path.join(BASE_DIR, "final_video1.mp4"),
         help="Path to input video file (default: FYP-1/final_video1.mp4)"
     )
+    parser.add_argument("--output-json",    default=None, help="Path for output JSON file")
+    parser.add_argument("--output-video",   default=None, help="Path for annotated output video")
+    parser.add_argument("--output-summary", default=None, help="Path for summary text file")
+    parser.add_argument("--faces-dir",      default=None, help="Directory to save face crops (unused in dim pipeline)")
+    parser.add_argument("--emotion-model",  default=None, help="Unused — kept for CLI compatibility")
+    parser.add_argument("--class-map",      default=None, help="Unused — kept for CLI compatibility")
     args = parser.parse_args()
     video_path = args.video
 
-    # Derive output paths from the input video filename
-    video_stem = os.path.splitext(os.path.basename(video_path))[0]  # [0] = stem, not [1] = extension
-    output_video_path  = os.path.join(BASE_DIR, "outputs", f"output_{video_stem}.mp4")
-    output_json_path   = os.path.join(BASE_DIR, "outputs", f"output_{video_stem}.json")
-    output_summary_path = os.path.join(BASE_DIR, "outputs", f"output_{video_stem}_summary.txt")
+    # Derive output paths — use CLI args if provided, else auto-derive from video stem
+    video_stem = os.path.splitext(os.path.basename(video_path))[0]
+    output_video_path   = args.output_video   or os.path.join(BASE_DIR, "outputs", f"output_{video_stem}.mp4")
+    output_json_path    = args.output_json    or os.path.join(BASE_DIR, "outputs", f"output_{video_stem}.json")
+    output_summary_path = args.output_summary or os.path.join(BASE_DIR, "outputs", f"output_{video_stem}_summary.txt")
 
     init_models()
 
