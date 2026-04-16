@@ -44,7 +44,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Performance settings
-PROCESS_EVERY_N_FRAMES = 1  # Set to 2 or 3 for faster processing (skip frames)
+PROCESS_EVERY_N_FRAMES = 3  # Set to 2 or 3 for faster processing (skip frames)
 NUM_WORKERS = 4  # Number of threads for parallel processing
 BATCH_SIZE = 8  # Batch size for classification
 
@@ -264,8 +264,8 @@ class Track:
         # Local gallery for this track instance (synced to student_registry)
         self.embedding_gallery = []
         
-        self.emotion_history = deque(maxlen=EMOTION_SMOOTHING)
-        self.action_history = deque(maxlen=ACTION_SMOOTHING)
+        self.emotion_history = deque(maxlen=max(1, EMOTION_SMOOTHING // PROCESS_EVERY_N_FRAMES))
+        self.action_history = deque(maxlen=max(1, ACTION_SMOOTHING // PROCESS_EVERY_N_FRAMES))
         self.current_emotion = "neutral"
         self.current_action = "neutral"
     
@@ -285,7 +285,8 @@ class Track:
         self.kf.update(z.reshape(-1, 1))
         self.bbox = z_to_bbox(self.kf.x[:4])
         
-        self.smooth_bbox = SMOOTH_ALPHA * self.bbox + (1 - SMOOTH_ALPHA) * self.smooth_bbox
+        effective_alpha = min(1.0, SMOOTH_ALPHA * PROCESS_EVERY_N_FRAMES)
+        self.smooth_bbox = effective_alpha * self.bbox + (1 - effective_alpha) * self.smooth_bbox
         
         self.last_seen = frame_id
         self.hits += 1
@@ -1424,6 +1425,7 @@ def main():
             else:
                 # For skipped frames, use last known assignments but update JSON
                 for track in tracks:
+                    track.predict() # Step Kalman filter forward for skipped frame to maintain tracker accuracy
                     if track.confirmed:
                         student_id_str = str(track.student_id)
                         frame_id_str = str(frame_id)
