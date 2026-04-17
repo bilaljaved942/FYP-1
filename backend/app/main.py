@@ -10,6 +10,7 @@ import numpy as np
 
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,6 +46,14 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 # Mount the uploads directory to serve static files like .mp4 and .json publicly
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
+@app.get("/download/{filename}")
+async def download_file(filename: str):
+    """Force the browser to download the file instead of playing it."""
+    file_path = UPLOAD_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(path=file_path, filename=filename, media_type='application/octet-stream')
 
 # ── AI Script Routing ────────────────────────────────────────────
 # Two scripts: one optimised for normal light, one for dim classrooms.
