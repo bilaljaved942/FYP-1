@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Depends, HTTPException
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,6 +42,9 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent          # backend/
 PROJECT_ROOT = BACKEND_DIR.parent                             # FYP-1/
 UPLOAD_DIR = BACKEND_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+# Mount the uploads directory to serve static files like .mp4 and .json publicly
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 # ── AI Script Routing ────────────────────────────────────────────
 # Two scripts: one optimised for normal light, one for dim classrooms.
