@@ -12,7 +12,7 @@ env/
 __pycache__/
 *.py[cod]
 *.pyo
-*.pyd
+*.pyd``
 .Python
 
 # Distribution / packaging

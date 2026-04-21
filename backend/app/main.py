@@ -16,9 +16,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db, init_db
-from app.models import AnalysisJob, JobStatus
+from app.models import AnalysisJob, JobStatus, User
 from app.schemas import UploadResponse, JobResponse
 from app.ai_utils import transform_ai_output
+from app.auth import router as auth_router
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -36,6 +37,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth_router)
 
 # ── Path resolution ──────────────────────────────────────────────
 # All paths are resolved relative to the project root (backend/../)

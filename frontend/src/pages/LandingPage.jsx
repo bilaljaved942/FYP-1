@@ -7,22 +7,6 @@ import {
 } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 
-function useCounter(end, duration = 2000, start = false) {
-  const [count, setCount] = useState(0)
-  useEffect(() => {
-    if (!start) return
-    let startTime = null
-    const step = (timestamp) => {
-      if (!startTime) startTime = timestamp
-      const progress = Math.min((timestamp - startTime) / duration, 1)
-      setCount(Math.floor(progress * end))
-      if (progress < 1) requestAnimationFrame(step)
-    }
-    requestAnimationFrame(step)
-  }, [end, duration, start])
-  return count
-}
-
 function HeaderThemeToggle() {
   const { theme, toggle } = useTheme()
   const isDark = theme === 'dark'
@@ -34,29 +18,6 @@ function HeaderThemeToggle() {
     </button>
   )
 }
-
-function StatCard({ value, label, suffix = '', delay = 0 }) {
-  const [visible, setVisible] = useState(false)
-  const ref = useRef(null)
-  const count = useCounter(value, 2000, visible)
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setVisible(true); observer.disconnect() } }, { threshold: 0.5 })
-    if (ref.current) observer.observe(ref.current)
-    return () => observer.disconnect()
-  }, [])
-
-  return (
-    <div ref={ref} className="text-center px-4 py-6 animate-fade-up" style={{ animationDelay: `${delay}ms` }}>
-      <div className="text-4xl md:text-5xl font-black mb-2 font-display text-primary">
-        {visible ? count.toLocaleString() : 0}
-        <span className="gradient-text">{suffix}</span>
-      </div>
-      <div className="text-sm font-bold uppercase tracking-wider text-muted">{label}</div>
-    </div>
-  )
-}
-
 function FeatureCard({ icon: Icon, title, description, badgeColor, delay = 0 }) {
   const isAccent = badgeColor === 'indigo'
   return (
@@ -139,15 +100,7 @@ export default function LandingPage({ onEnterApp }) {
         </div>
       </section>
 
-      {/* Stats Divider */}
-      <section className="relative z-10 py-12 border-y" style={{ borderColor: 'var(--border-color)', background: 'var(--bg-surface)' }}>
-        <div className="max-w-7xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-0 divide-x-0 md:divide-x" style={{ borderColor: 'var(--border-color)' }}>
-          <StatCard value={95}  suffix="%" label="Accuracy" delay={0} />
-          <StatCard value={500} suffix="+" label="Classrooms" delay={100} />
-          <StatCard value={12}  suffix="+" label="Actions Tracked" delay={200} />
-          <StatCard value={3}   suffix="s" label="Analyze Delay" delay={300} />
-        </div>
-      </section>
+
 
       {/* Features */}
       <section id="features" className="relative z-10 py-28 px-4 max-w-7xl mx-auto">
@@ -176,7 +129,7 @@ export default function LandingPage({ onEnterApp }) {
             <p className="text-lg text-secondary">Specific tools designed explicitly for the needs of Faculty and Administration.</p>
           </div>
           
-          <div className="grid md:grid-cols-2 gap-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
             <div className="glass rounded-[2rem] p-10 animate-fade-up shadow-xl" style={{ border: '2px solid var(--brand-border)' }}>
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-8 shadow-sm" style={{ background: 'var(--brand-bg)' }}>
                 <GraduationCap size={32} style={{ color: 'var(--brand-primary)' }} />
@@ -223,11 +176,8 @@ export default function LandingPage({ onEnterApp }) {
             <Eye size={24} style={{ color: 'var(--brand-primary)' }} />
             <span className="font-black text-xl font-display text-primary">ClassroomEye</span>
           </div>
-          <div className="text-secondary text-sm font-medium">
+          <div className="text-secondary text-sm font-medium text-center md:text-left">
             AI-Powered Engagement System &middot; Final Year Project
-          </div>
-          <div className="flex gap-4 object-contain text-xs font-bold text-muted uppercase tracking-wider">
-            <span>React</span> &middot; <span>FastAPI</span> &middot; <span>YOLOv8</span>
           </div>
         </div>
       </footer>

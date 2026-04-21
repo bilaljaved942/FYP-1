@@ -1,28 +1,50 @@
-import { useState } from 'react'
-import { GraduationCap, ShieldCheck, Eye, ArrowLeft, Sparkles } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { GraduationCap, ShieldCheck, Eye, EyeOff, ArrowLeft, Mail, Lock, User, Loader2, AlertCircle } from 'lucide-react'
+import { loginUser, registerUser } from '../services/api'
 
 const ROLES = [
-  {
-    id: 'teacher',
-    label: 'Teacher',
-    subtitle: 'Upload videos & analyze per-student engagement',
-    icon: GraduationCap,
-    type: 'brand',
-    description: 'Access video upload tools, per-student emotion & action dashboards, and session reports.',
-  },
-  {
-    id: 'hod',
-    label: 'Head of Department',
-    subtitle: 'Department-wide analytics & oversight',
-    icon: ShieldCheck,
-    type: 'accent',
-    description: 'View department trends, teacher performance, and at-risk student alerts.',
-  },
+  { id: 'teacher', label: 'Teacher', icon: GraduationCap, type: 'brand' },
+  { id: 'hod', label: 'Admin (HOD)', icon: ShieldCheck, type: 'accent' },
 ]
 
 export default function LoginPage({ onLogin, onBack }) {
-  const [selectedRole, setSelectedRole] = useState(null)
-  const selected = ROLES.find(r => r.id === selectedRole)
+  const [isSignUp, setIsSignUp] = useState(false)
+  const [selectedRole, setSelectedRole] = useState('teacher')
+  const [formData, setFormData] = useState({ name: '', email: '', password: '' })
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
+  const [errorMsg, setErrorMsg] = useState(null)
+  const [showPassword, setShowPassword] = useState(false)
+
+  // Clear errors when switching tabs
+  useEffect(() => {
+    setErrorMsg(null)
+  }, [isSignUp])
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setErrorMsg(null)
+    setIsAuthenticating(true)
+    
+    try {
+      let response;
+      if (isSignUp) {
+        response = await registerUser(formData.name, formData.email, formData.password, selectedRole)
+      } else {
+        response = await loginUser(formData.email, formData.password)
+      }
+      
+      // Artificial delay for smooth UX transition as requested
+      await new Promise(r => setTimeout(r, 800))
+      
+      // Route the user based on the role verified by the backend database
+      const verifiedRole = response?.role?.toLowerCase() || (isSignUp ? selectedRole : 'teacher')
+      onLogin(verifiedRole) 
+    } catch (err) {
+      setErrorMsg(err.message)
+    } finally {
+      setIsAuthenticating(false)
+    }
+  }
 
   return (
     <div className="hero-section min-h-screen flex items-center justify-center p-4 relative">
@@ -30,82 +52,100 @@ export default function LoginPage({ onLogin, onBack }) {
       <div className="hero-blob-1" />
       <div className="hero-blob-2" />
 
-      <div className="relative w-full max-w-lg z-10 animate-fade-up">
+      <div className="relative w-full max-w-md z-10 animate-fade-up">
         {onBack && (
-          <button onClick={onBack} className="mb-6 flex items-center gap-2 text-sm font-medium transition-colors cursor-pointer" style={{ color: 'var(--text-secondary)' }}>
+          <button onClick={onBack} className="mb-6 flex items-center gap-2 text-sm font-medium transition-colors cursor-pointer hover:text-[var(--text-primary)]" style={{ color: 'var(--text-secondary)' }}>
             <ArrowLeft size={16} /> Back to Home
           </button>
         )}
 
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-5 shadow-lg"
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4 shadow-lg"
                style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-dark))', boxShadow: 'var(--shadow-glow)' }}>
-            <Eye size={28} className="text-white" />
+            <Eye size={24} className="text-white" />
           </div>
-          <h1 className="text-3xl font-black font-display mb-1">
+          <h1 className="text-2xl font-black font-display mb-1">
             <span style={{ color: 'var(--text-primary)' }}>Classroom</span><span className="gradient-text">Eye</span>
           </h1>
-          <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>AI-Powered Classroom Engagement Analytics</p>
         </div>
 
-        <div className="glass rounded-[2rem] p-8 md:p-10 shadow-2xl">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles size={14} style={{ color: 'var(--brand-primary)' }} />
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--brand-primary)' }}>Select Role</span>
-          </div>
-          <h2 className="text-2xl font-black mb-2" style={{ color: 'var(--text-primary)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Welcome Back</h2>
-          <p className="text-sm mb-8" style={{ color: 'var(--text-muted)' }}>Choose your role to access your personalized dashboard</p>
-
-          <div className="space-y-4 mb-8">
-            {ROLES.map(role => {
-              const isSelected = selectedRole === role.id
-              const isBrand = role.type === 'brand'
-              const colorBase = isBrand ? 'var(--brand-primary)' : 'var(--accent-primary)'
-              const bgBase = isBrand ? 'var(--brand-bg)' : 'var(--accent-bg)'
-              const borderBase = isBrand ? 'var(--brand-border)' : 'var(--accent-border)'
-
-              return (
-                <button
-                  key={role.id}
-                  onClick={() => setSelectedRole(role.id)}
-                  className="w-full text-left flex items-start gap-4 p-5 rounded-2xl transition-all duration-200 group cursor-pointer border"
-                  style={{
-                    background: isSelected ? bgBase : 'var(--bg-input)',
-                    borderColor: isSelected ? borderBase : 'var(--border-color)',
-                  }}
-                >
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform duration-200 group-hover:scale-110"
-                       style={{ background: bgBase, color: colorBase }}>
-                    <role.icon size={22} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>{role.label}</span>
-                      {isSelected && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: colorBase }} />}
-                    </div>
-                    <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>{role.description}</p>
-                  </div>
-                  <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-1 transition-all"
-                       style={{ borderColor: isSelected ? colorBase : 'var(--border-color)' }}>
-                    {isSelected && <div className="w-2.5 h-2.5 rounded-full" style={{ background: colorBase }} />}
-                  </div>
-                </button>
-              )
-            })}
+        <div className="glass rounded-[2rem] p-8 shadow-2xl">
+          {/* Toggle Sign In / Sign Up */}
+          <div className="flex p-1 rounded-xl mb-6" style={{ background: 'var(--bg-input)' }}>
+             <button onClick={() => setIsSignUp(false)} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${!isSignUp ? 'bg-[var(--bg-surface)] shadow-sm' : 'opacity-50'}`} style={{ color: 'var(--text-primary)' }}>Sign In</button>
+             <button onClick={() => setIsSignUp(true)} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${isSignUp ? 'bg-[var(--bg-surface)] shadow-sm' : 'opacity-50'}`} style={{ color: 'var(--text-primary)' }}>Create Account</button>
           </div>
 
-          <button
-            onClick={() => selectedRole && onLogin(selectedRole)}
-            disabled={!selectedRole}
-            className="w-full py-4 rounded-xl font-bold text-base transition-all duration-200 shadow-lg text-white"
-            style={{
-              background: !selectedRole ? 'var(--bg-input)' : (selected?.type === 'brand' ? 'linear-gradient(90deg, var(--brand-dark), var(--brand-light))' : 'linear-gradient(90deg, var(--accent-primary), var(--accent-light))'),
-              opacity: !selectedRole ? 0.5 : 1,
-              cursor: !selectedRole ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {selectedRole ? `Continue as ${selected?.label}` : 'Continue'}
-          </button>
+          <h2 className="text-xl font-black mb-6 text-center" style={{ color: 'var(--text-primary)', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+             {isSignUp ? 'Create your account' : 'Welcome back'}
+          </h2>
+
+          <form onSubmit={handleSubmit} className="space-y-4 mb-6">
+            {isSignUp && (
+              <>
+                <div className="grid grid-cols-2 gap-3 mb-2">
+                  {ROLES.map(role => {
+                    const isSelected = selectedRole === role.id
+                    const colorBase = role.type === 'brand' ? 'var(--brand-primary)' : 'var(--accent-primary)'
+                    return (
+                      <button key={role.id} type="button" onClick={() => setSelectedRole(role.id)}
+                              className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-bold transition-all ${isSelected ? 'shadow-sm' : ''}`}
+                              style={{ 
+                                background: isSelected ? (role.type === 'brand' ? 'var(--brand-bg)' : 'var(--accent-bg)') : 'var(--bg-input)', 
+                                borderColor: isSelected ? colorBase : 'transparent',
+                                color: isSelected ? colorBase : 'var(--text-muted)'
+                              }}>
+                        <role.icon size={16} /> {role.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="relative animate-fade-up">
+                  <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}/>
+                  <input type="text" placeholder="Full Name" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full pl-11 pr-4 py-3 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)] transition-all" style={{ background: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                </div>
+              </>
+            )}
+            
+            <div className="relative">
+              <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}/>
+              <input type="email" placeholder="Email address" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full pl-11 pr-4 py-3 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)] transition-all" style={{ background: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+            </div>
+
+            <div className="relative">
+              <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}/>
+              <input 
+                type={showPassword ? "text" : "password"} 
+                placeholder="Password" required 
+                value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} 
+                className="w-full pl-11 pr-12 py-3 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)] transition-all" 
+                style={{ background: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} 
+              />
+              <button 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 focus:outline-none transition-colors hover:text-[var(--text-primary)]"
+                style={{ color: 'var(--text-muted)' }}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+
+            {errorMsg && (
+              <div className="flex items-center gap-2 text-red-500 text-xs font-bold bg-red-500/10 p-3 rounded-lg animate-fade-up">
+                 <AlertCircle size={14} /> {errorMsg}
+              </div>
+            )}
+
+            <button type="submit" disabled={isAuthenticating} className="w-full py-3.5 flex items-center justify-center gap-2 rounded-xl font-bold text-sm transition-all shadow-lg text-white mt-2 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+                    style={{ background: 'linear-gradient(90deg, var(--brand-dark), var(--brand-light))' }}>
+              {isAuthenticating ? <Loader2 size={18} className="animate-spin" /> : (isSignUp ? 'Create Account' : 'Sign In')}
+            </button>
+          </form>
+
+
+
         </div>
       </div>
     </div>

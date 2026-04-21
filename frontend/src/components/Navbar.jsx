@@ -94,18 +94,7 @@ export default function Navbar({ title, role, onLogout }) {
             {/* Theme toggle */}
             <ThemeToggle />
 
-            {/* Notifications */}
-            <button
-              className="w-9 h-9 rounded-xl btn-outline flex items-center justify-center relative"
-              title="Notifications"
-              style={{ color: 'var(--text-secondary)' }}
-            >
-              <Bell size={15} />
-              <div
-                className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full"
-                style={{ background: 'var(--brand-primary)' }}
-              />
-            </button>
+
 
             {/* Logout */}
             <button

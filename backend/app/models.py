@@ -15,6 +15,10 @@ class JobStatus(str, PyEnum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
+class UserRole(str, PyEnum):
+    TEACHER = "TEACHER"
+    HOD = "HOD"
+
 
 class User(Base):
     __tablename__ = "users"
@@ -25,7 +29,13 @@ class User(Base):
         default=uuid.uuid4
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(
+        Enum(UserRole, name="user_role_enum"),
+        default=UserRole.TEACHER,
+        nullable=False
+    )
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class AnalysisJob(Base):

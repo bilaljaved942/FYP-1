@@ -78,69 +78,72 @@ function UploadSection({ onUploadComplete }) {
   if (status === 'completed') return null
 
   return (
-    <div className="max-w-2xl mx-auto animate-fade-up">
-      <div className="mb-8 text-center">
-        <div className="badge-brand mb-4 shadow-sm"><Sparkles size={12} /> AI Video Analysis</div>
-        <h2 className="text-3xl font-black font-display" style={{ color: 'var(--text-primary)' }}>Upload Classroom Video</h2>
-        <p className="mt-2 text-sm" style={{ color: 'var(--text-muted)' }}>Our AI analyzes student engagement second by second</p>
-      </div>
+    <div className="w-full max-w-xl mx-auto animate-fade-up">
+      {status === 'idle' || status === 'failed' ? (
+        <div className="text-center">
+          <div className="badge-brand mb-6 shadow-sm mx-auto inline-flex"><Sparkles size={12} /> AI Video Analysis</div>
+          <h2 className="text-3xl font-black font-display mb-3" style={{ color: 'var(--text-primary)' }}>Analyze Classroom</h2>
+          <p className="text-sm mb-10" style={{ color: 'var(--text-muted)' }}>Upload MP4 recording for instant behavioral breakdown</p>
 
-      <div className="glass rounded-[2rem] p-8 md:p-10 shadow-2xl">
-        {status === 'idle' || status === 'failed' ? (
-          <>
-            <div
-              className={`drop-zone rounded-2xl p-10 text-center cursor-pointer ${dragActive ? 'active' : ''}`}
-              onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
-              onClick={() => inputRef.current?.click()}
-            >
-              <input ref={inputRef} type="file" accept="video/mp4" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: 'var(--brand-bg)' }}>
-                {file ? <FileVideo size={28} style={{ color: 'var(--brand-primary)' }} /> : <Upload size={28} style={{ color: 'var(--brand-primary)' }} />}
+          <div
+            className={`transition-all duration-300 rounded-3xl p-8 cursor-pointer border-2 hover:border-[var(--brand-primary)] ${dragActive ? 'border-[var(--brand-primary)] bg-[var(--brand-primary)]/5 scale-105' : 'border-dashed border-[var(--border-color)] bg-transparent'}`}
+            onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
+            onClick={() => inputRef.current?.click()}
+          >
+            <input ref={inputRef} type="file" accept="video/mp4" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 transition-transform group-hover:scale-110" style={{ background: file ? 'var(--brand-bg)' : 'var(--bg-input)' }}>
+              {file ? <FileVideo size={24} style={{ color: 'var(--brand-primary)' }} /> : <Upload size={24} style={{ color: 'var(--text-secondary)' }} />}
+            </div>
+            
+            {file ? (
+              <div className="animate-fade-up">
+                <p className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>{file.name}</p>
+                <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{(file.size / 1024 / 1024).toFixed(1)} MB</p>
               </div>
-              {file ? (
-                <div>
-                  <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{file.name}</p>
-                  <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{(file.size / 1024 / 1024).toFixed(1)} MB &middot; MP4</p>
-                  <span className="badge-brand mt-3">✓ Ready to analyze</span>
-                </div>
-              ) : (
-                <>
-                  <p className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>Drag & drop your video</p>
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>or <span style={{ color: 'var(--brand-primary)' }}>browse</span> &middot; MP4 only</p>
-                </>
-              )}
-            </div>
-            {error && <div className="mt-4 flex items-center gap-2 text-red-500 text-sm bg-red-100 dark:bg-red-900/20 rounded-xl p-3"><XCircle size={16} /> {error}</div>}
-            <button onClick={handleAnalyze} disabled={!file} className="mt-6 w-full py-4 rounded-xl font-bold btn-brand flex justify-center gap-2">
-               Analyze Video
-            </button>
-          </>
-        ) : (
-          <div className="text-center py-8">
-            <div className="relative inline-flex items-center justify-center mb-6">
-              <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="42" fill="none" stroke="var(--border-color)" strokeWidth="8" />
-                <circle cx="50" cy="50" r="42" fill="none" stroke="var(--brand-primary)" strokeWidth="8" strokeLinecap="round"
-                        strokeDasharray={`${2 * Math.PI * 42}`} strokeDashoffset={`${2 * Math.PI * 42 * (1 - progress / 100)}`}
-                        style={{ transition: 'stroke-dashoffset 0.5s ease' }} />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                {status === 'uploading' ? <Upload size={22} style={{ color: 'var(--brand-primary)' }} /> : <Brain size={22} className="animate-pulse" style={{ color: 'var(--brand-primary)' }} />}
+            ) : (
+              <div>
+                <p className="font-semibold text-base mb-1" style={{ color: 'var(--text-primary)' }}>Click to upload or drag and drop</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Maximum file size 500MB</p>
               </div>
-            </div>
-            <div className="font-bold text-xl mb-2 font-display" style={{ color: 'var(--text-primary)' }}>
-              {status === 'uploading' ? 'Uploading Video...' : 'AI Analyzing Engagement...'}
-            </div>
-            <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
-              {status === 'processing' ? 'Detecting students, emotions & behaviors frame by frame' : 'Sending file to server'}
-            </p>
-            <div className="w-full rounded-full h-1.5 overflow-hidden mt-4 max-w-xs mx-auto" style={{ background: 'var(--bg-input)' }}>
-              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress}%`, background: 'var(--brand-primary)' }} />
-            </div>
-            <p className="text-sm font-semibold mt-2" style={{ color: 'var(--brand-primary)' }}>{Math.round(progress)}%</p>
+            )}
           </div>
-        )}
-      </div>
+          
+          {error && <div className="mt-6 flex items-center justify-center gap-2 text-red-500 text-sm font-semibold animate-fade-up"><XCircle size={16} /> {error}</div>}
+          
+          {file && (
+            <button onClick={handleAnalyze} className="mt-8 px-10 py-4 rounded-full font-bold text-white shadow-xl hover:scale-105 transition-all text-sm uppercase tracking-wide animate-fade-up"
+                    style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-dark))', boxShadow: 'var(--shadow-glow)' }}>
+              Start Analysis
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="text-center py-10">
+          <div className="relative inline-flex items-center justify-center mb-8">
+            <svg className="w-32 h-32 -rotate-90 drop-shadow-xl" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="46" fill="none" stroke="var(--bg-input)" strokeWidth="6" />
+              <circle cx="50" cy="50" r="46" fill="none" stroke="url(#progressGrad)" strokeWidth="6" strokeLinecap="round"
+                      strokeDasharray={`${2 * Math.PI * 46}`} strokeDashoffset={`${2 * Math.PI * 46 * (1 - progress / 100)}`}
+                      style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1)' }} />
+              <defs>
+                <linearGradient id="progressGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="var(--brand-primary)" />
+                  <stop offset="100%" stopColor="var(--brand-dark)" />
+                </linearGradient>
+              </defs>
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center flex-col">
+              <span className="text-2xl font-black font-display" style={{ color: 'var(--text-primary)' }}>{Math.round(progress)}<span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>%</span></span>
+            </div>
+          </div>
+          <div className="font-bold text-2xl mb-2 font-display" style={{ color: 'var(--text-primary)' }}>
+            {status === 'uploading' ? 'Uploading...' : 'Processing Video'}
+          </div>
+          <p className="text-sm font-medium animate-pulse" style={{ color: 'var(--brand-primary)' }}>
+            {status === 'processing' ? 'AI analyzing behaviors frame by frame...' : 'Encrypting and transferring file...'}
+          </p>
+        </div>
+      )}
     </div>
   )
 }
