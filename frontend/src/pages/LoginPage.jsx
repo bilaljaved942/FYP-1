@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { GraduationCap, ShieldCheck, Eye, EyeOff, ArrowLeft, Mail, Lock, User, Loader2, AlertCircle } from 'lucide-react'
+import { GraduationCap, ShieldCheck, Eye, EyeOff, ArrowLeft, Mail, Lock, User, Loader2, AlertCircle, Building2, Network } from 'lucide-react'
 import { loginUser, registerUser } from '../services/api'
 
 const ROLES = [
@@ -10,7 +10,7 @@ const ROLES = [
 export default function LoginPage({ onLogin, onBack }) {
   const [isSignUp, setIsSignUp] = useState(false)
   const [selectedRole, setSelectedRole] = useState('teacher')
-  const [formData, setFormData] = useState({ name: '', email: '', password: '' })
+  const [formData, setFormData] = useState({ name: '', email: '', password: '', university: 'FAST NUCES', department: 'Computer Science' })
   const [isAuthenticating, setIsAuthenticating] = useState(false)
   const [errorMsg, setErrorMsg] = useState(null)
   const [showPassword, setShowPassword] = useState(false)
@@ -28,7 +28,7 @@ export default function LoginPage({ onLogin, onBack }) {
     try {
       let response;
       if (isSignUp) {
-        response = await registerUser(formData.name, formData.email, formData.password, selectedRole)
+        response = await registerUser(formData.name, formData.email, formData.password, selectedRole, formData.university, formData.department)
       } else {
         response = await loginUser(formData.email, formData.password)
       }
@@ -38,7 +38,7 @@ export default function LoginPage({ onLogin, onBack }) {
       
       // Route the user based on the role verified by the backend database
       const verifiedRole = response?.role?.toLowerCase() || (isSignUp ? selectedRole : 'teacher')
-      onLogin(verifiedRole) 
+      onLogin(verifiedRole, response?.access_token, response?.full_name || formData.name)
     } catch (err) {
       setErrorMsg(err.message)
     } finally {
@@ -103,6 +103,24 @@ export default function LoginPage({ onLogin, onBack }) {
                 <div className="relative animate-fade-up">
                   <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}/>
                   <input type="text" placeholder="Full Name" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full pl-11 pr-4 py-3 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)] transition-all" style={{ background: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} />
+                </div>
+                
+                <div className="relative animate-fade-up" style={{ animationDelay: '100ms' }}>
+                  <Building2 size={18} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}/>
+                  <select value={formData.university} onChange={e => setFormData({...formData, university: e.target.value})} className="w-full pl-11 pr-10 py-3 rounded-xl border text-sm font-medium appearance-none focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)] transition-all" style={{ background: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+                    <option value="FAST NUCES" style={{ background: 'var(--bg-dropdown)' }}>FAST NUCES</option>
+                    <option value="NUST" style={{ background: 'var(--bg-dropdown)' }}>NUST</option>
+                    <option value="LUMS" style={{ background: 'var(--bg-dropdown)' }}>LUMS</option>
+                  </select>
+                </div>
+                
+                <div className="relative animate-fade-up" style={{ animationDelay: '150ms' }}>
+                  <Network size={18} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}/>
+                  <select value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})} className="w-full pl-11 pr-10 py-3 rounded-xl border text-sm font-medium appearance-none focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)] transition-all" style={{ background: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+                    <option value="Computer Science" style={{ background: 'var(--bg-dropdown)' }}>Computer Science</option>
+                    <option value="Electrical Engineering" style={{ background: 'var(--bg-dropdown)' }}>Electrical Engineering</option>
+                    <option value="BBA" style={{ background: 'var(--bg-dropdown)' }}>BBA</option>
+                  </select>
                 </div>
               </>
             )}

@@ -55,7 +55,7 @@ function ThemeToggle() {
   )
 }
 
-export default function Navbar({ title, role, onLogout }) {
+export default function Navbar({ title, role, onLogout, userName }) {
   const rc = roleConfig[role] || roleConfig.teacher
 
   return (
@@ -88,7 +88,7 @@ export default function Navbar({ title, role, onLogout }) {
               style={rc.style}
             >
               <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={rc.dot} />
-              {rc.label}
+              {userName || rc.label}
             </div>
 
             {/* Theme toggle */}

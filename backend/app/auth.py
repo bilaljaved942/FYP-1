@@ -23,12 +23,15 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     role: str | None = None
+    full_name: str | None = None
 
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
     role: UserRole
     full_name: str
+    university: str | None = None
+    department: str | None = None
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
@@ -61,7 +64,9 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
         email=user.email,
         hashed_password=get_password_hash(user.password),
         role=user.role,
-        full_name=user.full_name
+        full_name=user.full_name,
+        university=user.university,
+        department=user.department
     )
     db.add(db_user)
     await db.commit()
@@ -79,7 +84,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
         raise HTTPException(status_code=400, detail="Incorrect email or password")
         
     access_token = create_access_token(data={"sub": user.email, "role": user.role, "name": user.full_name})
-    return {"access_token": access_token, "token_type": "bearer", "role": user.role}
+    return {"access_token": access_token, "token_type": "bearer", "role": user.role, "full_name": user.full_name}
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     credentials_exception = HTTPException(

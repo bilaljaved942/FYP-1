@@ -42,6 +42,8 @@ function UploadSection({ onUploadComplete }) {
   const [jobId, setJobId] = useState(null)
   const [error, setError] = useState(null)
   const [progress, setProgress] = useState(0)
+  const [classSection, setClassSection] = useState('')
+  const [courseName, setCourseName] = useState('')
   const intervalRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -63,7 +65,8 @@ function UploadSection({ onUploadComplete }) {
     if (!file) return
     setStatus('uploading'); setError(null); setProgress(5)
     try {
-      const data = await uploadVideo(file)
+      const token = localStorage.getItem('token')
+      const data = await uploadVideo(file, classSection, courseName, token)
       setJobId(data.job_id); setStatus('processing'); setProgress(20)
       intervalRef.current = setInterval(async () => {
         try {
@@ -83,7 +86,22 @@ function UploadSection({ onUploadComplete }) {
         <div className="text-center">
           <div className="badge-brand mb-6 shadow-sm mx-auto inline-flex"><Sparkles size={12} /> AI Video Analysis</div>
           <h2 className="text-3xl font-black font-display mb-3" style={{ color: 'var(--text-primary)' }}>Analyze Classroom</h2>
-          <p className="text-sm mb-10" style={{ color: 'var(--text-muted)' }}>Upload MP4 recording for instant behavioral breakdown</p>
+          <p className="text-sm mb-8" style={{ color: 'var(--text-muted)' }}>Upload MP4 recording for instant behavioral breakdown</p>
+
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <input 
+              type="text" placeholder="Class Section (e.g., CS-6A)" required
+              value={classSection} onChange={(e) => setClassSection(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)] transition-all"
+              style={{ background: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+            />
+            <input 
+              type="text" placeholder="Course Name (e.g., English)" required
+              value={courseName} onChange={(e) => setCourseName(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)] transition-all"
+              style={{ background: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+            />
+          </div>
 
           <div
             className={`transition-all duration-300 rounded-3xl p-8 cursor-pointer border-2 hover:border-[var(--brand-primary)] ${dragActive ? 'border-[var(--brand-primary)] bg-[var(--brand-primary)]/5 scale-105' : 'border-dashed border-[var(--border-color)] bg-transparent'}`}
@@ -110,7 +128,7 @@ function UploadSection({ onUploadComplete }) {
           
           {error && <div className="mt-6 flex items-center justify-center gap-2 text-red-500 text-sm font-semibold animate-fade-up"><XCircle size={16} /> {error}</div>}
           
-          {file && (
+          {file && classSection && courseName && (
             <button onClick={handleAnalyze} className="mt-8 px-10 py-4 rounded-full font-bold text-white shadow-xl hover:scale-105 transition-all text-sm uppercase tracking-wide animate-fade-up"
                     style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-dark))', boxShadow: 'var(--shadow-glow)' }}>
               Start Analysis
@@ -265,12 +283,12 @@ function ResultsSection({ data }) {
   )
 }
 
-export default function TeacherDashboard({ onLogout }) {
+export default function TeacherDashboard({ onLogout, userName }) {
   const [results, setResults] = useState(null)
 
   return (
     <>
-      <Navbar title="Teacher Dashboard" role="teacher" onLogout={onLogout} />
+      <Navbar title="Teacher Dashboard" role="teacher" onLogout={onLogout} userName={userName} />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative">
         <div className="hero-grid" style={{ opacity: 0.5 }} />
         <div className="relative z-10">

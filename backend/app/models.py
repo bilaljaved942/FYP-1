@@ -2,9 +2,9 @@ import uuid
 from datetime import datetime
 from enum import Enum as PyEnum
 
-from sqlalchemy import String, DateTime, Enum, func
+from sqlalchemy import String, DateTime, Enum, func, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -36,8 +36,11 @@ class User(Base):
     )
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    university: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    department: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-
+    # Relationships
+    jobs: Mapped[list["AnalysisJob"]] = relationship("AnalysisJob", back_populates="teacher", cascade="all, delete-orphan")
 class AnalysisJob(Base):
     __tablename__ = "analysis_jobs"
 
@@ -59,3 +62,11 @@ class AnalysisJob(Base):
     )
     processing_time: Mapped[float | None] = mapped_column(nullable=True)
     ai_results: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    
+    # New fields for contextual tracking
+    teacher_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    class_section: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    course_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Relationships
+    teacher: Mapped["User"] = relationship("User", back_populates="jobs")
