@@ -1,3 +1,22 @@
+/**
+ * TeacherDashboard — Video Upload & Analysis Results Page
+ * =========================================================
+ * Primary workspace for teachers. Provides two main views:
+ *
+ * 1. UploadSection: File upload with drag-and-drop, class/course metadata inputs,
+ *    and a real-time progress indicator during AI processing.
+ *
+ * 2. ResultsSection: Displays per-student analysis results after processing:
+ *    - KPI cards (dominant emotion, primary action, avg engagement)
+ *    - Engagement timeline (line chart)
+ *    - Emotion distribution (donut/pie chart)
+ *    - Action breakdown (horizontal bar chart)
+ *    - Student selector dropdown for multi-student videos
+ *
+ * Props:
+ *   @param {function} onLogout  - Callback to log out and return to landing
+ *   @param {string}   userName  - Authenticated user's name for navbar display
+ */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Navbar from '../components/Navbar'
 import KPICard from '../components/KPICard'
@@ -12,19 +31,22 @@ import {
 } from 'recharts'
 import { useTheme } from '../context/ThemeContext'
 
-// Colors for charts that work in both modes
+// Chart color palette — designed to work well in both dark and light themes
 const CHART_COLORS = ['#10b981', '#6366f1', '#06b6d4', '#f59e0b', '#f43f5e', '#8b5cf6', '#ec4899']
 
+/** Returns the key with the highest value from an object (e.g., dominant emotion). */
 function getTopEntry(obj) {
   if (!obj || Object.keys(obj).length === 0) return 'N/A'
   return Object.entries(obj).sort((a, b) => b[1] - a[1])[0][0]
 }
 
+/** Calculates the mean engagement score from a timeline array of {second, score} objects. */
 function avgEngagement(timeline) {
   if (!timeline || timeline.length === 0) return 0
   return Math.round(timeline.reduce((a, b) => a + b.score, 0) / timeline.length)
 }
 
+/** Custom tooltip component for Recharts — styled to match the glassmorphism theme. */
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
@@ -35,6 +57,16 @@ function CustomTooltip({ active, payload, label }) {
   )
 }
 
+/**
+ * UploadSection — Handles file selection, metadata input, and AI processing.
+ *
+ * Lifecycle:
+ *   1. User enters class section + course name.
+ *   2. User drags/selects an MP4 file.
+ *   3. "Start Analysis" triggers uploadVideo() API call.
+ *   4. Component polls getJobStatus() every 3s until COMPLETED/FAILED.
+ *   5. On success, calls onUploadComplete(aiResults) to switch to ResultsSection.
+ */
 function UploadSection({ onUploadComplete }) {
   const [file, setFile] = useState(null)
   const [dragActive, setDragActive] = useState(false)
@@ -166,6 +198,18 @@ function UploadSection({ onUploadComplete }) {
   )
 }
 
+/**
+ * ResultsSection — Displays AI analysis results for the uploaded video.
+ *
+ * Shows per-student breakdowns with:
+ *   - KPI cards for key metrics
+ *   - Engagement timeline (second-by-second line chart)
+ *   - Emotion distribution (pie/donut chart)
+ *   - Action breakdown (horizontal bar chart)
+ *   - Dropdown to switch between detected students
+ *
+ * @param {object} data - The ai_results object from the completed analysis job.
+ */
 function ResultsSection({ data }) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
@@ -283,7 +327,9 @@ function ResultsSection({ data }) {
   )
 }
 
+/** Main TeacherDashboard component — switches between upload and results views. */
 export default function TeacherDashboard({ onLogout, userName }) {
+  // Stores AI results after analysis completes; null = show upload view
   const [results, setResults] = useState(null)
 
   return (

@@ -1,4 +1,35 @@
+/**
+ * KPICard — Key Performance Indicator Card Component
+ * ====================================================
+ * Reusable card component for displaying a single metric/statistic.
+ * Used in both the Teacher dashboard (Dominant Emotion, Primary Action, Avg Engagement)
+ * and the HOD dashboard (Dept Avg, Lectures Analyzed, Top Course).
+ *
+ * Features:
+ *   - Color-coded icon, value, and border based on the `color` prop.
+ *   - Optional trend indicator (↑ or ↓ with percentage).
+ *   - Glassmorphism styling with subtle glow effects.
+ *   - Smooth fade-up entrance animation.
+ *
+ * Props:
+ *   @param {Component} icon  - Lucide icon component (e.g., TrendingUp, Brain).
+ *   @param {string}    label - Short label above the value (e.g., "Dept. Avg Engagement").
+ *   @param {string}    value - The main metric value (e.g., "72%", "N/A").
+ *   @param {string}    sub   - Small subtitle below the value (e.g., "Based on all videos").
+ *   @param {string}    color - Color scheme key: 'emerald'|'indigo'|'amber'|'rose'|'violet'|'cyan'.
+ *   @param {number}    trend - Optional trend percentage (positive = green ↑, negative = red ↓).
+ */
+
 export default function KPICard({ icon: Icon, label, value, sub, color = 'emerald', trend }) {
+  /**
+   * Color map — maps semantic color names to Tailwind utility classes.
+   * Each color scheme provides consistent styling for:
+   *   bg:     Background of the icon container
+   *   icon:   Icon color
+   *   value:  Main value text color
+   *   border: Card border (with hover effect)
+   *   glow:   Subtle shadow glow effect
+   */
   const colorMap = {
     emerald: {
       bg:     'bg-emerald-500/10',
@@ -51,14 +82,17 @@ export default function KPICard({ icon: Icon, label, value, sub, color = 'emeral
     },
   }
 
+  // Fall back to emerald if an unknown color is passed
   const c = colorMap[color] || colorMap.emerald
 
   return (
     <div className={`glass rounded-2xl border p-5 transition-all duration-300 animate-fade-up shadow-lg ${c.border} ${c.glow}`}>
+      {/* Top row: Icon + optional trend badge */}
       <div className="flex items-start justify-between mb-4">
         <div className={`${c.bg} w-11 h-11 rounded-xl flex items-center justify-center`}>
           {Icon && <Icon size={20} className={c.icon} />}
         </div>
+        {/* Trend indicator — only shown when `trend` prop is provided */}
         {trend !== undefined && (
           <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
             trend >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
@@ -67,8 +101,14 @@ export default function KPICard({ icon: Icon, label, value, sub, color = 'emeral
           </span>
         )}
       </div>
+
+      {/* Label (e.g., "Dept. Avg Engagement") */}
       <p className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">{label}</p>
+
+      {/* Main value (e.g., "72%") */}
       <p className={`text-2xl font-black font-display ${c.value}`}>{value}</p>
+
+      {/* Subtitle (e.g., "Based on all videos") */}
       {sub && <p className="text-slate-500 text-xs mt-1.5">{sub}</p>}
     </div>
   )

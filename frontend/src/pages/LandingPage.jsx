@@ -1,3 +1,18 @@
+/**
+ * LandingPage — Marketing & Introduction Page
+ * ===============================================
+ * The first page users see when visiting ClassroomEye.
+ * Showcases the platform's features, role-based dashboards, and technology.
+ *
+ * Sections:
+ *   1. Hero — Main headline, tagline, and CTA buttons
+ *   2. Features — 6 feature cards (Video Analysis, Emotion Recognition, etc.)
+ *   3. Role Portals — Teacher vs HOD dashboard previews
+ *   4. Footer — Branding and project attribution
+ *
+ * Props:
+ *   @param {function} onEnterApp - Navigates to the login page
+ */
 import { useState, useEffect, useRef } from 'react'
 import {
   Eye, Brain, TrendingUp, Users, Upload, BarChart3,
@@ -7,6 +22,7 @@ import {
 } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 
+/** Theme toggle button for the landing page header (dark/light mode). */
 function HeaderThemeToggle() {
   const { theme, toggle } = useTheme()
   const isDark = theme === 'dark'
@@ -18,6 +34,8 @@ function HeaderThemeToggle() {
     </button>
   )
 }
+
+/** Reusable feature card component with animated icon and hover effects. */
 function FeatureCard({ icon: Icon, title, description, badgeColor, delay = 0 }) {
   const isAccent = badgeColor === 'indigo'
   return (

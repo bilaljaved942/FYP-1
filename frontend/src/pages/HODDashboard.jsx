@@ -1,3 +1,24 @@
+/**
+ * HODDashboard — Department-Wide Analytics Dashboard
+ * ====================================================
+ * Aggregated view for Head of Department (HOD) users.
+ * Displays analytics from all teachers in the same university + department.
+ *
+ * Visualizations (6 charts):
+ *   1. Teacher-wise Engagement (bar chart)
+ *   2. Overall Emotion Distribution (pie/donut chart)
+ *   3. Overall Action Breakdown (horizontal bar chart)
+ *   4. Emotions by Course (grouped bar chart)
+ *   5. Actions by Course (grouped bar chart)
+ *   6. Course Engagement (progress bars)
+ *
+ * Data is fetched from GET /analytics/hod (requires HOD role).
+ * Shows an empty state message when no data is available yet.
+ *
+ * Props:
+ *   @param {function} onLogout  - Callback to log out
+ *   @param {string}   userName  - HOD's name for navbar display
+ */
 import { useState, useEffect } from 'react'
 import Navbar from '../components/Navbar'
 import KPICard from '../components/KPICard'
@@ -9,9 +30,11 @@ import {
 import { useTheme } from '../context/ThemeContext'
 import { getHodAnalytics } from '../services/api'
 
+// Color palettes for charts
 const TEACHER_COLORS = ['#10b981', '#6366f1', '#f59e0b', '#06b6d4', '#f43f5e']
 const CHART_COLORS = ['#10b981', '#6366f1', '#06b6d4', '#f59e0b', '#f43f5e', '#8b5cf6', '#ec4899', '#14b8a6']
 
+/** Reusable section header with icon, title, and optional subtitle. */
 function SectionHeader({ icon: Icon, title, sub, color = 'var(--brand-primary)' }) {
   return (
     <div className="flex items-center gap-2 mb-5">
